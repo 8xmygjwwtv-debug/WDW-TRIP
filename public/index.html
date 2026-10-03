@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>WDW Trip Dashboard · Oct 29 – Nov 5, 2026</title>
+  <meta name="description" content="Live Walt Disney World waits, hours, Skyliner guide and travel sync for Oct 29 – Nov 5, 2026." />
+  <meta name="theme-color" content="#1e40af" />
+  <meta name="robots" content="noindex,nofollow" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="WDW Trip" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script>
+    // Apply saved theme before first paint (no flash).
+    try {
+      const t = JSON.parse(localStorage.getItem('wdw.theme') || 'null');
+      const dark = t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      if (dark) document.documentElement.classList.add('dark');
+    } catch (e) {}
+  </script>
+  <script>tailwind = { config: { darkMode: 'class' } };</script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    :root {
+      --bg: #f4f6fb; --surface: #ffffff; --surface2: #eef2fa; --ink: #14203b; --muted: #55627f; --line: #dfe5f1;
+      --board: #0f1b36; --board-ink: #f3f6ff; --accent: #2563eb; --shadow: 0 1px 2px rgba(20,32,59,.06), 0 6px 18px rgba(20,32,59,.07);
+      --ok-bg: #dcfce7; --ok-ink: #14532d; --mid-bg: #fef3c7; --mid-ink: #78350f; --high-bg: #ffedd5; --high-ink: #7c2d12;
+      --bad-bg: #fee2e2; --bad-ink: #7f1d1d; --off-bg: #e5e9f2; --off-ink: #3d4863; --ref-bg: #ede9fe; --ref-ink: #4c1d95;
+    }
+    .dark {
+      --bg: #0a1326; --surface: #121e3a; --surface2: #182648; --ink: #eaf0ff; --muted: #a2b2d6; --line: #26365f;
+      --board: #070d1c; --board-ink: #f3f6ff; --accent: #6ea0ff; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 22px rgba(0,0,0,.35);
+      --ok-bg: #12351f; --ok-ink: #8ff0b0; --mid-bg: #3a2d0b; --mid-ink: #fcd978; --high-bg: #3b1f0c; --high-ink: #ffb77a;
+      --bad-bg: #3d1414; --bad-ink: #ffaaaa; --off-bg: #222e4d; --off-ink: #b6c3e4; --ref-bg: #2b2058; --ref-ink: #cdbcff;
+    }
+    html { -webkit-text-size-adjust: 100%; }
+    body { background: var(--bg); color: var(--ink); font-family: 'Figtree', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; line-height: 1.5;
+           padding-bottom: env(safe-area-inset-bottom, 0); }
+    h1, h2, h3, .display { font-family: 'Bricolage Grotesque', 'Figtree', system-ui, sans-serif; letter-spacing: -0.01em; }
+    .muted { color: var(--muted); }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); }
+    .card-flat { background: var(--surface2); border-radius: 14px; }
+    .park-bar { border-top: 5px solid var(--pc, var(--accent)); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: .4rem; font-weight: 600; font-size: .9rem; padding: .55rem .95rem;
+           border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; transition: transform .12s, background .15s; min-height: 40px; }
+    .btn:hover { background: var(--surface2); }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
+    .dark .btn-primary { color: #0a1326; }
+    .btn-sm { padding: .3rem .65rem; font-size: .8rem; min-height: 32px; border-radius: 10px; }
+    .chip { display: inline-flex; align-items: center; gap: .3rem; padding: .25rem .7rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface);
+            font-size: .82rem; font-weight: 600; cursor: pointer; min-height: 32px; }
+    .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .dark .chip[aria-pressed="true"] { color: #0a1326; }
+    .input, select.input, textarea.input { width: 100%; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: .55rem .75rem; font-size: .95rem; min-height: 42px; }
+    .input:focus-visible, .btn:focus-visible, .chip:focus-visible, .tab:focus-visible, a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+    label.lbl { display: block; font-size: .82rem; font-weight: 600; margin-bottom: .25rem; color: var(--muted); }
+    .tabs { display: flex; gap: .35rem; overflow-x: auto; scrollbar-width: none; padding: .4rem .75rem; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { white-space: nowrap; padding: .5rem .85rem; border-radius: 12px; font-weight: 600; font-size: .9rem; color: var(--muted); border: 1px solid transparent; cursor: pointer; background: transparent; }
+    .tab:hover { color: var(--ink); background: var(--surface2); }
+    .tab[aria-selected="true"] { color: var(--ink); background: var(--surface); border-color: var(--line); box-shadow: inset 0 -3px 0 var(--tc, var(--accent)); }
+    /* wait pills */
+    .pill { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-width: 62px; padding: .3rem .55rem; border-radius: 12px; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; }
+    .pill .n { font-family: 'Bricolage Grotesque', 'Figtree', sans-serif; font-size: 1.4rem; font-weight: 800; }
+    .pill .u { font-size: .65rem; font-weight: 600; opacity: .85; }
+    .pill.t { font-size: .85rem; }
+    .w-ok { background: var(--ok-bg); color: var(--ok-ink); } .w-mid { background: var(--mid-bg); color: var(--mid-ink); }
+    .w-high { background: var(--high-bg); color: var(--high-ink); } .w-bad { background: var(--bad-bg); color: var(--bad-ink); }
+    .w-off { background: var(--off-bg); color: var(--off-ink); } .w-ref { background: var(--ref-bg); color: var(--ref-ink); }
+    /* departures board — the one memorable element */
+    .board { background: var(--board); color: var(--board-ink); border-radius: 22px; box-shadow: var(--shadow); border: 1px solid rgba(255,255,255,.06); }
+    .board .row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .75rem; padding: .7rem 1rem; border-top: 1px solid rgba(255,255,255,.08); }
+    .board .row:first-child { border-top: 0; }
+    .board .num { font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 1.9rem; font-variant-numeric: tabular-nums; min-width: 3.2ch; text-align: right; line-height: 1; }
+    .board .num small { font-size: .7rem; font-weight: 600; opacity: .7; margin-left: .15rem; }
+    .dot { width: 10px; height: 10px; border-radius: 999px; background: var(--pc, #888); display: inline-block; flex: none; }
+    .nc-ok { color: #6ee7a0; } .nc-mid { color: #fcd34d; } .nc-high { color: #fdba74; } .nc-bad { color: #fca5a5; } .nc-off { color: #9fb0d3; }
+    .star { cursor: pointer; font-size: 1.15rem; line-height: 1; padding: .3rem; border-radius: 8px; background: transparent; border: 0; color: var(--muted); min-width: 36px; min-height: 36px; }
+    .star[aria-pressed="true"] { color: #f59e0b; }
+    .bell[aria-pressed="true"] { color: var(--accent); }
+    :root { --tk-h: 38px; }
+    body { padding-bottom: calc(var(--tk-h) + env(safe-area-inset-bottom, 0px)); }
+    /* floating buttons sit above the ticker */
+    #fab-root { position: fixed; right: max(12px, env(safe-area-inset-right)); bottom: calc(var(--tk-h) + env(safe-area-inset-bottom, 0px) + 12px); z-index: 40; }
+    .fab-col { display: flex; flex-direction: column; align-items: flex-end; gap: .55rem; }
+    .fab-round { width: 48px; height: 48px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); font-size: 1.3rem; cursor: pointer; }
+    .fab-round:active { transform: scale(.94); }
+    .fab-sheet { width: min(360px, calc(100vw - 24px)); max-height: 52vh; overflow: auto; }
+    /* live ticker */
+    .ticker { position: fixed; left: 0; right: 0; bottom: 0; z-index: 35; height: calc(var(--tk-h) + env(safe-area-inset-bottom, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px);
+              display: flex; align-items: center; background: var(--board); color: var(--board-ink); border-top: 1px solid rgba(255,255,255,.12); }
+    .tk-badge { flex: none; margin: 0 .5rem 0 .6rem; padding: .1rem .5rem; border-radius: 6px; background: #dc2626; color: #fff; font-weight: 800; font-size: .72rem; letter-spacing: .02em; }
+    .tk-view { flex: 1; overflow: hidden; min-width: 0; white-space: nowrap; }
+    .tk-track { display: inline-flex; animation: tk var(--tk-dur, 60s) linear infinite; will-change: transform; }
+    .ticker.paused .tk-track, .tk-view:hover .tk-track, .tk-view:focus-within .tk-track { animation-play-state: paused; }
+    .tk-group { display: inline-flex; align-items: center; padding-right: 2.5rem; }
+    .tk-item { font-size: .88rem; font-weight: 600; } .tk-item a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+    .tk-sep { margin: 0 1rem; opacity: .45; }
+    .tk-down { color: #fca5a5; } .tk-up { color: #86efac; } .tk-warn { color: #fcd34d; } .tk-hours { color: #fdba74; } .tk-alert { color: #93c5fd; } .tk-deal { color: #f0abfc; } .tk-wx { color: #ffffff; }
+    .tk-btn { flex: none; background: transparent; color: inherit; border: 0; padding: 0 .65rem; height: 100%; font-size: 1rem; cursor: pointer; }
+    @keyframes tk { to { transform: translateX(-50%); } }
+    @media (prefers-reduced-motion: reduce) { .tk-track { animation: none !important; } .tk-view { overflow-x: auto; } .tk-dup { display: none; } }
+    /* map overlay */
+    .mapov { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
+    .mapov.hidden, .modal-back.hidden, .hidden.ticker { display: none; }
+    .mapov-head { display: flex; align-items: center; justify-content: space-between; padding: .5rem .75rem; border-bottom: 1px solid var(--line); }
+    .mapov-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    #mp-map { flex: 0 0 46%; min-height: 230px; background: var(--surface2); z-index: 0; }
+    #mp-map.pinning { cursor: crosshair; outline: 3px solid var(--accent); outline-offset: -3px; }
+    .mapov-panel { flex: 1; overflow: auto; padding-bottom: env(safe-area-inset-bottom, 0px); }
+    @media (min-width: 768px) { .mapov-body { flex-direction: row; } #mp-map { flex: 1; } .mapov-panel { flex: 0 0 410px; border-left: 1px solid var(--line); } }
+    .dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.9); }
+    .leaflet-container { font-family: inherit; }
+    .you-pin { font-size: 26px; line-height: 30px; text-align: center; filter: drop-shadow(0 2px 2px rgba(0,0,0,.4)); }
+    .dest-pin { width: 34px; height: 34px; border-radius: 999px; background: #fff; border: 3px solid #2563eb; display: grid; place-items: center; font-size: 18px; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+    /* modal + photos */
+    .modal-back { position: fixed; inset: 0; z-index: 55; background: rgba(5,10,25,.6); display: flex; align-items: flex-end; justify-content: center; padding: 0; }
+    .modal { width: min(560px, 100vw); max-height: 92vh; overflow: auto; border-radius: 22px 22px 0 0; }
+    @media (min-width: 640px) { .modal-back { align-items: center; padding: 1rem; } .modal { border-radius: 22px; } }
+    .ph-tile { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: var(--surface2); padding: 0; cursor: pointer; }
+    .ph-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .ph-tag { position: absolute; left: 0; right: 0; bottom: 0; padding: .2rem .35rem; font-size: .68rem; font-weight: 700; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.75)); text-align: left; }
+    .toast-wrap { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 10px); z-index: 60; width: min(440px, calc(100vw - 24px)); display: grid; gap: .5rem; pointer-events: none; }
+    .toast { pointer-events: auto; background: var(--board); color: var(--board-ink); padding: .75rem 1rem; border-radius: 14px; box-shadow: var(--shadow); animation: tin .25s ease-out; border-left: 5px solid var(--accent); }
+    @keyframes tin { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+    .skel { background: linear-gradient(90deg, var(--surface2), var(--surface), var(--surface2)); background-size: 200% 100%; animation: sh 1.4s infinite; border-radius: 12px; }
+    @keyframes sh { to { background-position: -200% 0; } }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+    .sticky-head { position: sticky; top: 0; z-index: 30; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); padding-top: env(safe-area-inset-top, 0); }
+    details > summary { cursor: pointer; font-weight: 600; }
+    a.link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; font-weight: 600; }
+    textarea.input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; line-height: 1.45; }
+    .svgmap text { font-family: 'Figtree', system-ui, sans-serif; fill: var(--ink); }
+  </style>
+</head>
+<body>
+  <a href="#view" class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-white focus:p-2">Skip to content</a>
+
+  <header class="sticky-head">
+    <div class="max-w-5xl mx-auto px-3 pt-2 flex items-center gap-2">
+      <div class="flex-1 min-w-0">
+        <h1 class="display text-lg sm:text-xl font-extrabold leading-tight truncate">WDW Trip · Oct 29 – Nov 5</h1>
+        <p id="status-line" class="text-xs muted truncate" aria-live="polite">Loading live data…</p>
+      </div>
+      <span id="net-badge" class="hidden chip" style="cursor:default">Offline</span>
+      <button id="btn-refresh" class="btn btn-sm" aria-label="Refresh live data">↻ Refresh</button>
+      <button id="btn-theme" class="btn btn-sm" aria-label="Toggle light or dark mode">◐</button>
+    </div>
+    <nav class="max-w-5xl mx-auto" aria-label="Sections">
+      <div id="tabs" class="tabs" role="tablist"></div>
+    </nav>
+  </header>
+
+  <main id="view" class="max-w-5xl mx-auto px-3 py-4 pb-32" tabindex="-1"></main>
+
+  <footer class="max-w-5xl mx-auto px-3 pb-24 text-xs muted text-center">
+    Powered by <a class="link" href="https://themeparks.wiki" target="_blank" rel="noopener">ThemeParks.wiki</a>.
+    Unofficial fan-made planner, not affiliated with The Walt Disney Company. Always confirm in the My Disney Experience app.
+  </footer>
+
+  <div id="fab-root"></div>
+  <div id="overlays"></div>
+  <div id="modal" class="modal-back hidden" role="dialog" aria-modal="true"></div>
+  <div id="ticker" class="ticker" role="region" aria-label="Live updates: weather, ride status, hours and deals">
+    <span class="tk-badge">LIVE</span>
+    <div class="tk-view"><div id="tk-track" class="tk-track"><span class="tk-group"><span class="tk-item tk-wx">Loading live updates…</span></span></div></div>
+    <button id="tk-loc" class="tk-btn hidden" data-act="tk-loc" aria-label="Use my location for local weather" title="Use my location for local weather">📍</button>
+    <button id="tk-pause" class="tk-btn" data-act="tk-pause" aria-label="Pause scrolling" title="Pause scrolling">⏸</button>
+  </div>
+  <div id="toasts" class="toast-wrap" aria-live="assertive"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="/data.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
