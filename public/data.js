@@ -145,14 +145,6 @@ window.WDW_DATA = {
       'Table-service dining books up. Use the official dining page to check for openings.'
     ],
     shopping: ['World of Disney', 'LEGO Store', 'Marketplace Co-Op', 'Disney\u2019s Days of Christmas'],
-    dining: [
-      { name: 'Gideon\u2019s Bakehouse', note: 'Known for oversized cookies and long lines. Go early.' },
-      { name: 'T-REX Cafe', note: 'Dinosaur-themed, great for photos.' },
-      { name: 'Raglan Road', note: 'Irish pub fare with live music.' },
-      { name: 'Morimoto Asia', note: 'Pan-Asian, good for a special night.' },
-      { name: 'Wine Bar George', note: 'Casual wine-focused spot.' },
-      { name: 'Chef Art Smith\u2019s Homecomin\u2019', note: 'Southern comfort food.' }
-    ],
     links: [
       { label: 'Disney Springs official page', url: 'https://disneyworld.disney.go.com/destinations/disney-springs/' },
       { label: 'Disney Springs dining', url: 'https://disneyworld.disney.go.com/dining/disney-springs/' }
@@ -205,9 +197,126 @@ window.WDW_DATA.poiCats = [
   { k: 'shop',     label: 'Shops & kiosks', icon: '\uD83D\uDECD\uFE0F' },
   { k: 'entrance', label: 'Entrances / exits', icon: '\uD83D\uDEAA' },
   { k: 'skyliner', label: 'Skyliner',          icon: '\uD83D\uDEA1' },
+  { k: 'monorail', label: 'Monorail',          icon: '\uD83D\uDE9D' },
   { k: 'bus',      label: 'Bus stops',         icon: '\uD83D\uDE8C' },
   { k: 'parking',  label: 'Parking',           icon: '\uD83C\uDD7F\uFE0F' }
 ];
 
 /* Search box around the whole Walt Disney World property (south, west, north, east) for shops, kiosks, dining, rides and resorts. */
 window.WDW_DATA.bbox = [28.33, -81.63, 28.44, -81.49];
+
+/* Monorail guide. Times are rough estimates; confirm hours and boarding rules on the day. */
+window.WDW_DATA.monorail = {
+  lines: [
+    { name: 'Magic Kingdom Express', color: '#2563eb', stops: 'Transportation and Ticket Center (TTC) \u2194 Magic Kingdom', mins: 'about 5\u201310 min', note: 'Non-stop. The main way between the TTC parking lot and the park.' },
+    { name: 'Resort monorail', color: '#d97706', stops: 'Magic Kingdom, Contemporary, Polynesian, Grand Floridian, and the TTC', mins: 'slower, with several stops', note: 'Loops through the three monorail resorts. Direction of travel is posted at each station.' },
+    { name: 'EPCOT monorail', color: '#7c3aed', stops: 'TTC \u2194 EPCOT (main entrance)', mins: 'about 8\u201310 min', note: 'The only monorail link between EPCOT and the TTC.' }
+  ],
+  stations: [
+    { name: 'Transportation and Ticket Center (TTC)', note: 'Hub for all three lines and the Magic Kingdom parking lot. Ferries to Magic Kingdom also leave from here.', q: 'Transportation and Ticket Center Walt Disney World' },
+    { name: 'Magic Kingdom', note: 'Station is at the park entrance, beside the ferry dock.', q: 'Magic Kingdom monorail station' },
+    { name: 'EPCOT', note: 'Station is at the main entrance.', q: 'EPCOT monorail station' },
+    { name: 'Contemporary Resort', note: 'Resort loop. Walkway to Magic Kingdom.', q: 'Contemporary Resort monorail station' },
+    { name: 'Polynesian Village Resort', note: 'Resort loop.', q: 'Polynesian Village Resort monorail station' },
+    { name: 'Grand Floridian Resort & Spa', note: 'Resort loop.', q: 'Grand Floridian monorail station' }
+  ],
+  routes: [
+    { name: 'Driving to Magic Kingdom', steps: 'Park at the TTC, then take the Express monorail or a ferry across the lagoon to the park.', time: 'allow extra time at opening and closing' },
+    { name: 'EPCOT \u2194 Magic Kingdom', steps: 'Ride the EPCOT monorail to the TTC, then switch to the Express monorail (or a ferry) to Magic Kingdom.', time: 'roughly 30\u201345 min with the transfer and waits' },
+    { name: 'Magic Kingdom \u2192 Contemporary', steps: 'Take the resort monorail, or walk the path from the park.', time: 'a short ride or walk' }
+  ],
+  tips: [
+    'You\u2019re staying off-site, so the TTC is the stop that matters most: it\u2019s where you park for Magic Kingdom and where you switch to or from the EPCOT line.',
+    'The ferries from the TTC are a good backup when a monorail line is crowded or paused. They\u2019re slower but roomy.',
+    'The Contemporary, Polynesian and Grand Floridian stops are mainly for resort guests and diners. A park ticket generally covers the TTC, Magic Kingdom and EPCOT stations, but confirm current rules at the station.',
+    'Monorails can pause for severe weather. Keep a plan B, like the ferry or a rideshare.',
+    'At closing time, everyone heads for the Express monorail at once. Waiting 20 to 30 minutes after fireworks, or taking the ferry, can be calmer.',
+    'Rideshare and taxi pickup spots differ by park and can change. Follow the pin in your rideshare app and look for signs, or ask a Cast Member. Use the map buttons above to see parking and entrances.',
+    'Times in this section are rough estimates. Boarding waits vary.'
+  ],
+  links: [
+    { label: 'Walt Disney World transportation (official)', url: 'https://disneyworld.disney.go.com/transportation/' }
+  ]
+};
+
+/* Restaurants that ThemeParks.wiki may not list as "live". The app shows these only when they are
+   NOT already in the live feed or the map directory, so duplicates never appear.
+   Add or remove names freely: { name, type, note }. Always confirm hours and availability. */
+window.WDW_DATA.extraDining = {
+  springs: [
+    { name: 'Raglan Road Irish Pub and Restaurant', type: 'Table service', note: 'Irish pub fare with live music' },
+    { name: 'Amorette\u2019s Patisserie', type: 'Dessert', note: 'Pastries and sweets' },
+    { name: 'T-REX Cafe', type: 'Table service', note: 'Dinosaur-themed, great for photos' },
+    { name: 'Morimoto Asia', type: 'Table service', note: 'Pan-Asian, good for a special night' },
+    { name: 'Wine Bar George', type: 'Table service', note: 'Casual, wine-focused' },
+    { name: 'Chef Art Smith\u2019s Homecomin\u2019', type: 'Table service', note: 'Southern comfort food' },
+    { name: 'Jaleo by Jos\u00e9 Andr\u00e9s', type: 'Table service', note: 'Spanish tapas' },
+    { name: 'The Boathouse', type: 'Table service', note: 'Waterfront seafood and steaks' },
+    { name: 'Wolfgang Puck Bar & Grill', type: 'Table service', note: 'American' },
+    { name: 'Frontera Cocina', type: 'Table service', note: 'Mexican' },
+    { name: 'The Edison', type: 'Table service', note: 'Cocktails and live entertainment' },
+    { name: 'Paddlefish', type: 'Table service', note: 'Seafood on a riverboat' },
+    { name: 'Planet Hollywood Observatory', type: 'Table service', note: 'American' },
+    { name: 'Terralina Crafted Italian', type: 'Table service', note: 'Italian' },
+    { name: 'Maria & Enzo\u2019s Ristorante', type: 'Table service', note: 'Italian' },
+    { name: 'STK Orlando', type: 'Table service', note: 'Steakhouse' },
+    { name: 'Din Tai Fung', type: 'Table service', note: 'Dumplings' },
+    { name: 'Gideon\u2019s Bakehouse', type: 'Dessert', note: 'Oversized cookies and long lines. Go early.' },
+    { name: 'Blaze Pizza', type: 'Quick service', note: 'Build-your-own pizza' },
+    { name: 'Earl of Sandwich', type: 'Quick service', note: 'Sandwiches' }
+  ],
+  epcot: [
+    { name: 'Space 220 Restaurant', type: 'Table service', note: 'Space-station dining experience. Reservations recommended.' },
+    { name: 'Le Cellier Steakhouse', type: 'Table service', note: 'Canada Pavilion' },
+    { name: 'Via Napoli Ristorante e Pizzeria', type: 'Table service', note: 'Italy Pavilion' },
+    { name: 'Biergarten Restaurant', type: 'Table service', note: 'Germany Pavilion, buffet' },
+    { name: 'Akershus Royal Banquet Hall', type: 'Table service', note: 'Norway Pavilion' },
+    { name: 'San Angel Inn Restaurante', type: 'Table service', note: 'Mexico Pavilion' },
+    { name: 'Teppan Edo', type: 'Table service', note: 'Japan Pavilion' },
+    { name: 'Spice Road Table', type: 'Table service', note: 'Morocco Pavilion' },
+    { name: 'Rose & Crown Dining Room', type: 'Table service', note: 'United Kingdom Pavilion' },
+    { name: 'Garden Grill Restaurant', type: 'Table service', note: 'The Land pavilion, character dining' },
+    { name: 'Coral Reef Restaurant', type: 'Table service', note: 'The Seas pavilion, dine by the aquarium' },
+    { name: 'Sunshine Seasons', type: 'Quick service', note: 'The Land pavilion' },
+    { name: 'Connections Eatery', type: 'Quick service', note: 'Near the Land and Seas' },
+    { name: 'Regal Eagle Smokehouse', type: 'Quick service', note: 'American Adventure' }
+  ],
+  mk: [
+    { name: 'Be Our Guest Restaurant', type: 'Table service', note: 'Fantasyland' },
+    { name: 'Cinderella\u2019s Royal Table', type: 'Table service', note: 'Inside Cinderella Castle, character dining' },
+    { name: 'Skipper Canteen', type: 'Table service', note: 'Adventureland' },
+    { name: 'Tony\u2019s Town Square Restaurant', type: 'Table service', note: 'Main Street, U.S.A.' },
+    { name: 'Liberty Tree Tavern', type: 'Table service', note: 'Liberty Square' },
+    { name: 'The Crystal Palace', type: 'Table service', note: 'Main Street, character dining' },
+    { name: 'The Plaza Restaurant', type: 'Table service', note: 'Main Street, U.S.A.' },
+    { name: 'Columbia Harbour House', type: 'Quick service', note: 'Liberty Square' },
+    { name: 'Pecos Bill Tall Tale Inn and Cafe', type: 'Quick service', note: 'Frontierland' },
+    { name: 'Casey\u2019s Corner', type: 'Quick service', note: 'Main Street, hot dogs' },
+    { name: 'Cosmic Ray\u2019s Starlight Cafe', type: 'Quick service', note: 'Tomorrowland' },
+    { name: 'Pinocchio Village Haus', type: 'Quick service', note: 'Fantasyland' }
+  ],
+  hs: [
+    { name: 'Sci-Fi Dine-In Theater Restaurant', type: 'Table service', note: 'Dine in a car at a drive-in movie' },
+    { name: '50\u2019s Prime Time Caf\u00e9', type: 'Table service', note: 'Echo Lake' },
+    { name: 'The Hollywood Brown Derby', type: 'Table service', note: 'Hollywood Boulevard' },
+    { name: 'Mama Melrose\u2019s Ristorante Italiano', type: 'Table service', note: 'Grand Avenue' },
+    { name: 'Oga\u2019s Cantina', type: 'Lounge', note: 'Star Wars: Galaxy\u2019s Edge. Reservations recommended.' },
+    { name: 'Docking Bay 7 Food and Cargo', type: 'Quick service', note: 'Star Wars: Galaxy\u2019s Edge' },
+    { name: 'Woody\u2019s Lunch Box', type: 'Quick service', note: 'Toy Story Land' },
+    { name: 'Backlot Express', type: 'Quick service', note: 'Echo Lake' },
+    { name: 'Roundup Rodeo BBQ', type: 'Table service', note: 'Toy Story Land' },
+    { name: 'Ronto Roasters', type: 'Quick service', note: 'Star Wars: Galaxy\u2019s Edge' },
+    { name: 'Baseline Tap House', type: 'Quick service', note: 'Grand Avenue, beer and snacks' }
+  ],
+  ak: [
+    { name: 'Yak & Yeti Restaurant', type: 'Table service', note: 'Asia' },
+    { name: 'Tiffins Restaurant', type: 'Table service', note: 'Discovery Island' },
+    { name: 'Tusker House Restaurant', type: 'Table service', note: 'Africa, character dining' },
+    { name: 'Rainforest Cafe', type: 'Table service', note: 'Park entrance' },
+    { name: 'Nomad Lounge', type: 'Lounge', note: 'Discovery Island' },
+    { name: 'Satu\u2019li Canteen', type: 'Quick service', note: 'Pandora' },
+    { name: 'Flame Tree Barbecue', type: 'Quick service', note: 'Discovery Island' },
+    { name: 'Pizzafari', type: 'Quick service', note: 'Discovery Island' },
+    { name: 'Harambe Market', type: 'Quick service', note: 'Africa' }
+  ]
+};
