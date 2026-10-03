@@ -1,6 +1,7 @@
 /* WDW Trip Dashboard — vanilla JS. Data: ThemeParks.wiki (via /api/tp proxy, with direct fallback). */
 (() => {
 'use strict';
+const APP_VERSION = '2026-10-03.5';
 const D = window.WDW_DATA;
 const TZ = D.trip.tz;
 const $ = (s, el = document) => el.querySelector(s);
@@ -844,6 +845,7 @@ function viewHelp() {
     <p>Each message has a clear subject like <em>[WDW Dashboard] Travel Update – Sync Request</em>, a plain-text summary, and a JSON block for easy parsing. Replies come back to the address you put in “From / reply-to”.</p></section>
   <section class="card p-4 mt-4 text-sm space-y-2"><h3 class="display font-bold text-lg">Good to know</h3><ul class="list-disc pl-5 space-y-1.5">
     <li>The bottom banner keeps scrolling even if your phone's Reduce Motion setting is on. Tap ⏸ to pause it; your choice is remembered.</li>
+    <li>Build ${APP_VERSION}. If something you expect is missing, make sure the latest files are uploaded to GitHub and reload the page twice.</li>
     <li>Waits are standby estimates from ThemeParks.wiki and can lag a few minutes. Confirm in the official Disney app.</li>
     <li>Restaurant walk-up data and menus are only shown when published. Menu links open a web search.</li>
     <li>Cloud alerts watch the same rides you set here. Open Deals & Alerts, flip Cloud alerts on, and tap Save to cloud now.</li>
@@ -1169,6 +1171,36 @@ function tickerItems() {
   return it;
 }
 let tkSig = '';
+/* The ticker is driven by JavaScript (not CSS animation) so it keeps scrolling regardless of an older
+   index.html, a device's Reduce Motion setting, or browsers that pause CSS animations. The style tag
+   below also neutralises the older index.html rules that froze or clipped the banner. */
+const TK = { x: 0, last: 0, w: 0, speed: 48, hover: false };
+(() => {
+  const st = document.createElement('style');
+  st.textContent = '.ticker .tk-track{animation:none !important;will-change:transform}.ticker .tk-view{overflow:hidden !important}'
+    + '.ticker .tk-dup{display:inline-flex !important}.ticker .tk-group{min-width:100vw;box-sizing:border-box}';
+  document.head.appendChild(st);
+})();
+function measureTicker() { const g = $('#tk-track')?.firstElementChild; TK.w = g ? g.getBoundingClientRect().width : 0; if (TK.w && -TK.x >= TK.w) TK.x = 0; }
+function tkFrame(ts) {
+  requestAnimationFrame(tkFrame);
+  const tr = $('#tk-track'), t = $('#ticker'); if (!tr || !t) return;
+  const dt = Math.min(0.1, Math.max(0, (ts - TK.last) / 1000)); TK.last = ts;
+  if (t.classList.contains('paused') || TK.hover || document.hidden) return;
+  if (!TK.w) { measureTicker(); if (!TK.w) return; }
+  TK.x -= TK.speed * dt; if (-TK.x >= TK.w) TK.x += TK.w;
+  tr.style.transform = `translate3d(${TK.x.toFixed(2)}px,0,0)`;
+}
+function startTicker() {
+  const v = $('.tk-view');
+  if (v) {   // pause under a mouse pointer only; touch devices never get stuck paused
+    v.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') TK.hover = true; });
+    v.addEventListener('pointerleave', () => { TK.hover = false; });
+  }
+  window.addEventListener('resize', measureTicker);
+  document.fonts?.ready?.then(measureTicker);
+  requestAnimationFrame(tkFrame);
+}
 function setTickerPaused(p) {
   const t = $('#ticker'), b = $('#tk-pause'); if (!t || !b) return;
   t.classList.toggle('paused', p); b.textContent = p ? '▶' : '⏸';
@@ -1182,9 +1214,8 @@ function renderTicker() {
   const sig = JSON.stringify(items.map((i) => [i.c, i.t, i.href || '']));
   if (sig === tkSig) return; tkSig = sig;
   const mk = (dup) => items.map((i) => `<span class="tk-item tk-${i.c}">${i.href ? `<a href="${esc(i.href)}" target="_blank" rel="noopener"${dup ? ' tabindex="-1"' : ''}>${esc(i.t)}</a>` : esc(i.t)}</span>`).join('<span class="tk-sep" aria-hidden="true">•</span>');
-  const chars = items.reduce((n, i) => n + i.t.length + 4, 0);
-  el.style.setProperty('--tk-dur', Math.max(30, Math.round(chars * 0.17)) + 's');
   el.innerHTML = `<span class="tk-group">${mk(false)}</span><span class="tk-group tk-dup" aria-hidden="true">${mk(true)}</span>`;
+  TK.w = 0; measureTicker();
 }
 
 /* ======================================================================
@@ -1653,7 +1684,8 @@ async function init() {
   S.tab = TABS.some(([k]) => k === location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', document.documentElement.classList.contains('dark') ? '#0a1326' : '#1e40af');
   try { localStorage.removeItem('wdw.poi.osm'); localStorage.removeItem('wdw.poi.osm2'); } catch { /* ignore */ }
-  poiCacheSync(); render(); setStatus(); loadWeather(); setTickerPaused(!!LS.get('wdw.tkPaused', false));
+  poiCacheSync(); render(); setStatus(); loadWeather(); setTickerPaused(!!LS.get('wdw.tkPaused', false)); startTicker();
+  $('footer')?.insertAdjacentHTML('beforeend', `<div class="mt-1">Build ${APP_VERSION}</div>`);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   fetchServerStatus();
   await refresh();

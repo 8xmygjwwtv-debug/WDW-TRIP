@@ -1,5 +1,5 @@
 /* Service worker: app-shell cache + last-known live data when offline. */
-const VERSION = 'wdw-v2';
+const VERSION = 'wdw-v3';
 const SHELL = ['/', '/index.html', '/app.js', '/data.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 const DATA_CACHE = 'wdw-data-v1';
 
@@ -20,6 +20,11 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (url.origin === location.origin && url.pathname.startsWith('/api/')) return; // never cache send/prefs endpoints
+  if (url.origin === location.origin) {   // our own files: network first so a new deploy shows immediately; cache only when offline
+    e.respondWith(fetch(req).then((res) => { if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(req, copy)); } return res; })
+      .catch(() => caches.match(req).then((m) => m || (req.mode === 'navigate' ? caches.match('/index.html') : Response.error()))));
+    return;
+  }
   // Only cache our own files, fonts, Tailwind and Leaflet. Map tiles, weather, routing and Overpass always go straight to the network.
   const CACHEABLE = url.origin === location.origin || ['cdnjs.cloudflare.com', 'cdn.tailwindcss.com', 'fonts.googleapis.com', 'fonts.gstatic.com'].includes(url.hostname);
   if (!CACHEABLE) return;
