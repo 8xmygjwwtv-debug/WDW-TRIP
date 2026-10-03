@@ -15,7 +15,7 @@ const KEY = {
   prefs: 'wdw.prefs', cache: 'wdw.cache', prev: 'wdw.prev', log: 'wdw.log', sent: 'wdw.sent', plan: 'wdw.plan',
   logi: 'wdw.logistics', collect: 'wdw.collect', ids: 'wdw.parkIds', fab: 'wdw.fab', dealsSeen: 'wdw.dealsSeen',
   emailAt: 'wdw.emailAt', hours: 'wdw.hours', theme: 'wdw.theme',
-  news: 'wdw.news', lastPos: 'wdw.lastPos', poiTp: 'wdw.poi.tp', poiOsm: 'wdw.poi.osm2'
+  news: 'wdw.news', lastPos: 'wdw.lastPos', poiTp: 'wdw.poi.tp', poiOsm: 'wdw.poi.osm3'
 };
 
 /* ---------- time helpers ---------- */
@@ -316,7 +316,7 @@ async function loadDeals(force) {
 /* ---------- rendering helpers ---------- */
 const TABS = [
   ['overview', 'Overview'], ['mk', 'Magic Kingdom'], ['epcot', 'EPCOT'], ['hs', 'Hollywood Studios'], ['ak', 'Animal Kingdom'],
-  ['springs', 'Disney Springs'], ['favs', 'Favorites / Must-Rides'], ['skyliner', 'Skyliner'], ['photos', 'Photos'], ['sync', 'Travel Sync'], ['deals', 'Deals & Alerts'], ['help', 'Help']
+  ['springs', 'Disney Springs'], ['favs', 'Favorites / Must-Rides'], ['skyliner', 'Skyliner & Monorail'], ['photos', 'Photos'], ['sync', 'Travel Sync'], ['deals', 'Deals & Alerts'], ['help', 'Help']
 ];
 const TAB_COLOR = { mk: '#2563eb', epcot: '#7c3aed', hs: '#dc2626', ak: '#15803d', springs: '#d97706', skyliner: '#0891b2', photos: '#db2777' };
 
@@ -448,7 +448,7 @@ function viewOverview() {
     <div class="grid gap-2 sm:grid-cols-2">${days.map((d) => planRow(d)).join('')}</div>
   </section>`;
 }
-const GCATS = [['all', 'All'], ['ride', 'Rides & attractions'], ['show', 'Shows'], ['dining', 'Dining & snacks'], ['shop', 'Shops & kiosks'], ['restroom', 'Restrooms'], ['firstaid', 'First aid'], ['guest', 'Guest services'], ['baby', 'Baby care'], ['entrance', 'Entrances / exits'], ['skyliner', 'Skyliner'], ['bus', 'Bus stops'], ['parking', 'Parking']];
+const GCATS = [['all', 'All'], ['ride', 'Rides & attractions'], ['show', 'Shows'], ['dining', 'Dining & snacks'], ['shop', 'Shops & kiosks'], ['restroom', 'Restrooms'], ['firstaid', 'First aid'], ['guest', 'Guest services'], ['baby', 'Baby care'], ['entrance', 'Entrances / exits'], ['skyliner', 'Skyliner'], ['monorail', 'Monorail'], ['bus', 'Bus stops'], ['parking', 'Parking']];
 const LIVE_CAT = { ATTRACTION: 'ride', SHOW: 'show', RESTAURANT: 'dining' };
 function globalChips() { return GCATS.map(([k, l]) => `<button class="chip" data-act="gcat" data-v="${k}" aria-pressed="${S.gcat === k}">${l}</button>`).join(''); }
 function globalStatus() {
@@ -469,11 +469,13 @@ function globalResults() {
     if ((cat === 'all' || cat === p.cat) && (!q || p.name.toLowerCase().includes(q) || catDef(p.cat).label.toLowerCase().includes(q) || areaName(p.park).toLowerCase().includes(q)))
       rows.push({ poi: p, name: p.name, d: o ? dist(o.lat, o.lon, p.lat, p.lon) : null });
   });
+  if (cat === 'all' || cat === 'dining') Object.keys(D.extraDining || {}).forEach((k) => curatedExtras(k).forEach((r) => { if (!q || r.name.toLowerCase().includes(q) || r.cur.type.toLowerCase().includes(q) || areaName(k).toLowerCase().includes(q)) rows.push({ cur: r, name: r.name, d: null }); }));
   if (!rows.length) return `<li class="muted text-sm py-2">${MAP.loading ? 'Still loading the directory…' : 'No matches. Try a shorter word or another category.'}</li>`;
   rows.sort((x, y) => (x.d != null && y.d != null ? x.d - y.d : 0) || x.name.localeCompare(y.name));
   const shown = rows.slice(0, 80);
   return shown.map((r) => {
     if (r.live) return entityRow(r.live, { showPark: true });
+    if (r.cur) return extraRow(r.cur);
     const p = r.poi; const c = catDef(p.cat);
     return `<li class="flex items-center gap-2 py-2.5 border-t first:border-t-0" style="border-color:var(--line)"><span class="dot" style="--pc:${areaColor(p.park)}" aria-hidden="true"></span>
       <div class="min-w-0 flex-1"><div class="font-semibold leading-snug">${c.icon} ${esc(p.name)}</div><div class="text-xs muted">${esc(areaName(p.park))} · ${esc(c.label)}${r.d != null ? ` · ${fmtDist(r.d)}` : ''}</div></div>
@@ -528,6 +530,29 @@ function viewPark(key) {
     <ul id="plist" class="mt-2" data-park="${key}">${parkList(key)}</ul>
   </section>`;
 }
+/* ---------- restaurants not in the live feed (curated + directory) ---------- */
+const nameHit = (set, n) => { const x = normName(n); for (const l of set) if (l === x || (x.length >= 6 && l.includes(x)) || (l.length >= 6 && x.includes(l))) return true; return false; };
+const liveDiningNames = () => new Set(Object.values(S.index).filter((e) => e.type === 'RESTAURANT').map((e) => normName(e.name)));
+function curatedExtras(key) {
+  const live = liveDiningNames(); const pois = new Set(MAP.pois.filter((p) => p.cat === 'dining').map((p) => normName(p.name)));
+  return (D.extraDining?.[key] || []).filter((c) => !nameHit(live, c.name) && !nameHit(pois, c.name)).map((c) => ({ cur: c, name: c.name, park: key }));
+}
+function diningExtras(key) {
+  const live = liveDiningNames(); const rows = curatedExtras(key);
+  MAP.pois.forEach((p) => { if (p.cat === 'dining' && p.park === key && !p.eid && !nameHit(live, p.name)) rows.push({ poi: p, name: p.name, park: key }); });
+  const seen = new Set(); return rows.filter((r) => { const n = normName(r.name); if (seen.has(n)) return false; seen.add(n); return true; }).sort((x, y) => x.name.localeCompare(y.name));
+}
+function extraRow(r) {
+  const color = (parkDef(r.park) || {}).color || areaColor(r.park);
+  if (r.poi) return `<li class="flex items-center gap-2 py-2.5 border-t first:border-t-0" style="border-color:var(--line)"><span class="dot" style="--pc:${color}" aria-hidden="true"></span>
+    <div class="min-w-0 flex-1"><div class="font-semibold leading-snug">🍴 ${esc(r.name)}</div><div class="text-xs muted">${esc(areaName(r.park))} · Dining · <a class="link" target="_blank" rel="noopener" href="${menuLink(r.name)}">Menu</a> · <a class="link" target="_blank" rel="noopener" href="https://disneyworld.disney.go.com/dining/">Check tables</a></div></div>
+    <span class="pill t w-off" title="Not in the live feed, so no wait or status">Info</span><button class="btn btn-sm" data-act="goto-poi" data-pid="${esc(r.poi.id)}">Directions</button></li>`;
+  const c = r.cur;
+  return `<li class="flex items-center gap-2 py-2.5 border-t first:border-t-0" style="border-color:var(--line)"><span class="dot" style="--pc:${color}" aria-hidden="true"></span>
+    <div class="min-w-0 flex-1"><div class="font-semibold leading-snug">🍴 ${esc(c.name)}</div><div class="text-xs muted">${esc(areaName(r.park) || parkDef(r.park)?.name || '')} · ${esc(c.type)}${c.note ? ' · ' + esc(c.note) : ''} · <a class="link" target="_blank" rel="noopener" href="${menuLink(c.name)}">Menu</a> · <a class="link" target="_blank" rel="noopener" href="https://disneyworld.disney.go.com/dining/">Check tables</a> · <a class="link" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${enc(c.name + ' Walt Disney World')}">Map</a></div></div>
+    <span class="pill t w-off" title="Not in the live feed, so no wait or status">Info</span></li>`;
+}
+
 function parkList(key) {
   const f = S.filters; const list = S.parks[key]?.live || [];
   if (!list.length) return `<li class="py-3">${S.loading ? '<div class="skel h-14 mb-2"></div>'.repeat(4) : '<span class="muted text-sm">No live data yet. Pull to refresh or tap Refresh.</span>'}</li>`;
@@ -550,7 +575,13 @@ function parkList(key) {
     return (hl.length ? `<li class="font-semibold text-sm pt-1">Parades & fireworks</li>${hl.map((e) => entityRow(e)).join('')}` : '')
       + (rest.length ? `${hl.length ? '<li class="font-semibold text-sm pt-3">Other shows</li>' : ''}${rest.map((e) => entityRow(e)).join('')}` : '');
   }
-  return out.length ? out.map((e) => entityRow(e)).join('') : '<li class="muted text-sm py-3">Nothing matches these filters.</li>';
+  let html = out.length ? out.map((e) => entityRow(e)).join('') : '';
+  if (f.kind === 'RESTAURANT' && f.status === 'all' && !f.fav) {
+    const ex = diningExtras(key).filter((r) => !q || r.name.toLowerCase().includes(q));
+    if (ex.length) html += `<li class="font-semibold text-sm pt-3">Also in ${esc(parkDef(key).name)} <span class="muted font-normal">(not in the live feed, so no wait or status)</span></li>${ex.map(extraRow).join('')}`;
+    if (!MAP.loaded && !MAP.loading) html += '<li class="text-xs muted py-2">Loading the full directory in the background to find more places…</li>';
+  }
+  return html || '<li class="muted text-sm py-3">Nothing matches these filters.</li>';
 }
 function festivalCard() {
   const F = D.festival;
@@ -567,6 +598,14 @@ function festivalCard() {
 }
 
 /* ---------- DISNEY SPRINGS ---------- */
+function springsList() {
+  const q = (S.sq || '').trim().toLowerCase();
+  const rows = diningExtras('springs').filter((r) => !q || r.name.toLowerCase().includes(q) || (r.cur?.note || '').toLowerCase().includes(q) || (r.cur?.type || '').toLowerCase().includes(q));
+  return (rows.length ? rows.map(extraRow).join('') : '<li class="muted text-sm py-2">No matches.</li>')
+    + (!MAP.loaded ? `<li class="text-xs muted py-2">${MAP.loading ? 'Loading more places from the map…' : 'More places will load in the background.'}</li>` : '');
+}
+function refreshSprings() { const el = $('#slist'); if (el) el.innerHTML = springsList(); }
+
 function viewSprings() {
   const X = D.springs;
   return `<section class="card park-bar p-4" style="--pc:#d97706">
@@ -576,7 +615,10 @@ function viewSprings() {
     <div class="flex flex-wrap gap-2 mt-3">${X.links.map((l) => `<a class="btn btn-primary" target="_blank" rel="noopener" href="${l.url}">${esc(l.label)}</a>`).join('')}</div>
   </section>
   <section class="grid gap-4 md:grid-cols-2 mt-4">
-    <div class="card p-4"><h3 class="display font-bold text-lg mb-2">Dining ideas</h3><ul class="space-y-2">${X.dining.map((r) => `<li><div class="font-semibold">${esc(r.name)}</div><div class="text-sm muted">${esc(r.note)} <a class="link" target="_blank" rel="noopener" href="${menuLink(r.name + ' Disney Springs')}">Menu</a></div></li>`).join('')}</ul></div>
+    <div class="card p-4 md:col-span-2"><h3 class="display font-bold text-lg mb-1">Restaurants &amp; treats</h3>
+      <p class="text-xs muted mb-2">A curated list plus places found on the map. Confirm hours and availability.</p>
+      <label class="sr-only" for="sq">Search Disney Springs restaurants</label><input id="sq" class="input" type="search" placeholder="Search Disney Springs restaurants…" value="${esc(S.sq || '')}" autocomplete="off"/>
+      <ul id="slist" class="mt-1">${springsList()}</ul></div>
     <div class="card p-4"><h3 class="display font-bold text-lg mb-2">Shopping</h3><ul class="list-disc pl-5 space-y-1 text-sm">${X.shopping.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></div>
   </section>`;
 }
@@ -636,7 +678,7 @@ function skylinerSvg() {
       <rect x="240" y="360" width="14" height="6" rx="3" fill="#2563eb"/><text x="260" y="367">EPCOT line</text></g>
   </svg>`;
 }
-function viewSkyliner() {
+function skylinerBody() {
   const K = D.skyliner;
   const live = Object.values(S.index).filter((e) => /skyliner/i.test(e.name));
   return `<section class="card park-bar p-4" style="--pc:#0891b2"><h2 class="display text-2xl font-extrabold">Disney Skyliner</h2>
@@ -651,6 +693,54 @@ function viewSkyliner() {
     <ul class="space-y-3">${K.routes.map((r) => `<li><div class="font-semibold">${esc(r.name)}</div><div class="text-sm">${esc(r.steps)}</div><div class="text-xs muted">${esc(r.time)}</div></li>`).join('')}</ul></section>
   <section class="card p-4 mt-4"><h3 class="display font-bold text-lg mb-2">Practical tips</h3><ul class="list-disc pl-5 space-y-1.5 text-sm">${K.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
     <div class="mt-3">${K.links.map((l) => `<a class="btn btn-sm" target="_blank" rel="noopener" href="${l.url}">${esc(l.label)}</a>`).join('')}</div></section>`;
+}
+
+function monorailSvg() {
+  const node = (x, y, c, big) => `<circle cx="${x}" cy="${y}" r="${big ? 17 : 12}" fill="var(--surface)" stroke="${c}" stroke-width="5"/>${big ? `<circle cx="${x}" cy="${y}" r="5" fill="${c}"/>` : ''}`;
+  return `<svg class="svgmap" viewBox="0 0 780 380" role="img" aria-label="Monorail schematic: the Transportation and Ticket Center connects to Magic Kingdom by the Express line, to EPCOT by the EPCOT line, and to the Contemporary, Polynesian and Grand Floridian resorts by the resort loop" style="width:100%;height:auto">
+    <line x1="120" y1="90" x2="380" y2="270" stroke="#2563eb" stroke-width="7" stroke-linecap="round"/>
+    <line x1="380" y1="270" x2="670" y2="310" stroke="#7c3aed" stroke-width="7" stroke-linecap="round"/>
+    <path d="M120 90 C 200 40, 300 40, 350 70" fill="none" stroke="#d97706" stroke-width="5" stroke-dasharray="3 10" stroke-linecap="round"/>
+    <path d="M610 100 C 640 170, 520 230, 394 262" fill="none" stroke="#d97706" stroke-width="5" stroke-dasharray="3 10" stroke-linecap="round"/>
+    <rect x="350" y="30" width="260" height="100" rx="16" fill="var(--surface2)" stroke="#d97706" stroke-width="3"/>
+    <text x="480" y="58" text-anchor="middle" font-size="14" font-weight="700">Resort loop stops</text>
+    <text x="480" y="82" text-anchor="middle" font-size="13">Contemporary</text><text x="480" y="100" text-anchor="middle" font-size="13">Polynesian</text><text x="480" y="118" text-anchor="middle" font-size="13">Grand Floridian</text>
+    <text x="215" y="190" text-anchor="middle" font-size="13" font-weight="700" transform="rotate(35 215 190)">Express ~5–10 min</text>
+    <text x="560" y="276" text-anchor="middle" font-size="13" font-weight="700">EPCOT line ~8–10 min</text>
+    ${node(120, 90, '#2563eb', false)}${node(380, 270, '#0891b2', true)}${node(670, 310, '#7c3aed', false)}
+    <text x="120" y="62" text-anchor="middle" font-size="15" font-weight="700">Magic Kingdom</text>
+    <text x="380" y="308" text-anchor="middle" font-size="15" font-weight="700">TTC</text><text x="380" y="326" text-anchor="middle" font-size="12" opacity=".75">Transportation &amp; Ticket Center</text>
+    <text x="670" y="342" text-anchor="middle" font-size="15" font-weight="700">EPCOT</text>
+    <text x="20" y="366" font-size="12" opacity=".75">Schematic, not to scale. The resort loop also stops at Magic Kingdom and the TTC.</text>
+  </svg>`;
+}
+function monorailBody() {
+  const M = D.monorail;
+  const live = Object.values(S.index).filter((e) => /monorail/i.test(e.name));
+  return `<section class="card park-bar p-4" style="--pc:#d97706"><h2 class="display text-2xl font-extrabold">Monorail</h2>
+    <p class="text-sm muted mb-2">Three lines meet at the Transportation and Ticket Center (TTC): the Magic Kingdom Express, the resort monorail, and the EPCOT line.</p>
+    ${monorailSvg()}
+    ${live.length ? `<ul class="mt-2">${live.map((e) => entityRow(e, { showPark: true, star: false })).join('')}</ul>` : ''}
+    <div class="flex flex-wrap gap-2 mt-3"><button class="btn btn-primary" data-act="mapcat" data-v="monorail">🚝 Monorail stations on map</button><button class="btn" data-act="mapcat" data-v="parking">🅿️ Parking</button><button class="btn" data-act="mapcat" data-v="entrance">🚪 Entrances &amp; exits</button></div>
+    <p class="text-xs muted mt-2">Pickup and drop-off spots: open the map and use these buttons, or search “TTC” in Search everything. Station positions come from OpenStreetMap and may be incomplete.</p>
+  </section>
+  <section class="card p-4 mt-4"><h3 class="display font-bold text-lg mb-2">The three lines</h3>
+    <ul class="space-y-3">${M.lines.map((l) => `<li class="flex gap-3"><span class="mt-1.5 w-1.5 rounded-full shrink-0" style="background:${l.color};height:2.6rem" aria-hidden="true"></span><div><div class="font-semibold">${esc(l.name)} <span class="text-xs muted">· ${esc(l.mins)}</span></div><div class="text-sm">${esc(l.stops)}</div><div class="text-xs muted">${esc(l.note)}</div></div></li>`).join('')}</ul></section>
+  <section class="card p-4 mt-4"><h3 class="display font-bold text-lg mb-2">Stations</h3>
+    <ul>${M.stations.map((s) => `<li class="py-2 border-t first:border-t-0" style="border-color:var(--line)"><div class="font-semibold">${esc(s.name)}</div><div class="text-sm muted">${esc(s.note)}</div>
+      <div class="flex flex-wrap gap-2 mt-1"><button class="btn btn-sm" data-act="mapcat" data-v="monorail" data-q="${esc(s.name.split(' (')[0].split(' &')[0])}">Find on map</button><a class="btn btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${enc(s.q)}">Google Maps</a></div></li>`).join('')}</ul></section>
+  <section class="card p-4 mt-4"><h3 class="display font-bold text-lg mb-2">How to get there</h3>
+    <ul class="space-y-3">${M.routes.map((r) => `<li><div class="font-semibold">${esc(r.name)}</div><div class="text-sm">${esc(r.steps)}</div><div class="text-xs muted">${esc(r.time)}</div></li>`).join('')}</ul></section>
+  <section class="card p-4 mt-4"><h3 class="display font-bold text-lg mb-2">Practical tips</h3><ul class="list-disc pl-5 space-y-1.5 text-sm">${M.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+    <div class="mt-3">${M.links.map((l) => `<a class="btn btn-sm" target="_blank" rel="noopener" href="${l.url}">${esc(l.label)}</a>`).join('')}</div></section>`;
+}
+function viewSkyliner() {
+  const sub = S.tsub || 'sky';
+  return `<div class="flex flex-wrap gap-2 mb-3" role="group" aria-label="Choose transit system">
+    <button class="chip" data-act="tsub" data-v="sky" aria-pressed="${sub === 'sky'}">🚡 Skyliner</button>
+    <button class="chip" data-act="tsub" data-v="mono" aria-pressed="${sub === 'mono'}">🚝 Monorail</button>
+    ${sub === 'sky' ? '<button class="chip" data-act="mapcat" data-v="skyliner">Show Skyliner stations on map</button>' : ''}</div>
+  ${sub === 'mono' ? monorailBody() : skylinerBody()}`;
 }
 
 /* ---------- TRAVEL SYNC ---------- */
@@ -850,6 +940,8 @@ function render() {
   const sel = tabs.querySelector('[aria-selected="true"]'); if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest', inline: 'center' });
   if (S.tab === 'deals') loadDeals();
   if (S.tab === 'photos') loadGallery();
+  if (S.tab === 'springs' && !MAP.loaded) loadPois();
+  if (S.filters.kind === 'RESTAURANT' && D.parks.some((p) => p.key === S.tab) && !MAP.loaded) loadPois();
   if (S.tab === 'sync') { const a = $('#mailto-link'); if (a && S.draft) a.href = `mailto:${enc(S.draft.to)}?subject=${enc(S.draft.subject)}&body=${enc(S.draft.text.slice(0, 1800))}`; }
   renderFab();
 }
@@ -933,6 +1025,7 @@ document.addEventListener('input', (ev) => {
   const t = ev.target;
   if (t.id === 'gq') { S.gq = t.value; refreshGlobal(); if (!MAP.loaded) loadPois(); }
   else if (t.id === 'pq') { S.filters.q = t.value; refreshList(); }
+  else if (t.id === 'sq') { S.sq = t.value; refreshSprings(); }
   else if (t.dataset.logi) { const L = LS.get(KEY.logi, {}); L[t.dataset.logi] = t.value; LS.set(KEY.logi, L); }
   else if (t.dataset.pref && t.type !== 'checkbox') { setPath(S.prefs, t.dataset.pref, t.dataset.num ? Number(t.value) : t.value.trim()); savePrefs(); }
 });
@@ -1122,6 +1215,7 @@ function classify(t) {
   if (/first aid/i.test(n) || ['first_aid', 'clinic', 'doctors'].includes(t.amenity)) return 'firstaid';
   if (/baby care/i.test(n)) return 'baby';
   if (/guest (relations|services)|lost\s*(and|&)\s*found/i.test(n)) return 'guest';
+  if (!t.route && (t.station === 'monorail' || t.monorail === 'yes' || (/monorail/i.test(n) && (t.railway === 'station' || t.public_transport)) || (/transportation and ticket|\bTTC\b/i.test(n) && (t.railway || t.public_transport)))) return 'monorail';
   if (t.aerialway === 'station') return 'skyliner';
   if (t.highway === 'bus_stop' || t.amenity === 'bus_station') return 'bus';
   if (t.amenity === 'toilets') return 'restroom';
@@ -1132,12 +1226,12 @@ function classify(t) {
   if (['restaurant', 'fast_food', 'cafe', 'bar', 'pub', 'ice_cream', 'biergarten', 'food_court'].includes(t.amenity)) return 'dining';
   return null;
 }
-const DEFAULT_NAME = { restroom: 'Restroom', bus: 'Bus stop', skyliner: 'Skyliner station', parking: 'Parking', firstaid: 'First aid' };
+const DEFAULT_NAME = { restroom: 'Restroom', bus: 'Bus stop', skyliner: 'Skyliner station', monorail: 'Monorail station', parking: 'Parking', firstaid: 'First aid' };
 function overpassQuery() {
   const around = D.areas.map((a) => `(around:${a.r},${a.lat},${a.lon})`);
   const f = (sel) => around.map((ar) => `nwr${sel}${ar};`).join('');
   const bb = `(${D.bbox.join(',')})`;   // whole Walt Disney World property: shops, kiosks, dining, rides, resorts
-  return `[out:json][timeout:90];(${f('["amenity"="toilets"]')}${f('["amenity"~"^(first_aid|clinic|doctors)$"]')}${f('["name"~"First Aid|Guest Relations|Guest Services|Baby Care|Lost and Found",i]')}${f('["highway"="bus_stop"]')}${f('["amenity"="bus_station"]')}${f('["amenity"="parking"]["name"]')}${f('["entrance"]["name"]')}${f('["name"~"Main Entrance|Park Entrance|Turnstile",i]["highway"!~"."]')}nwr["shop"]["name"]${bb};nwr["tourism"="attraction"]["name"]${bb};nwr["attraction"]["name"]${bb};nwr["amenity"~"^(restaurant|fast_food|cafe|food_court|bar|pub|ice_cream|biergarten)$"]["name"]${bb};nwr["aerialway"="station"](28.32,-81.60,28.39,-81.50););out center tags;`;
+  return `[out:json][timeout:90];(${f('["amenity"="toilets"]')}${f('["amenity"~"^(first_aid|clinic|doctors)$"]')}${f('["name"~"First Aid|Guest Relations|Guest Services|Baby Care|Lost and Found",i]')}${f('["highway"="bus_stop"]')}${f('["amenity"="bus_station"]')}${f('["amenity"="parking"]["name"]')}${f('["entrance"]["name"]')}${f('["name"~"Main Entrance|Park Entrance|Turnstile",i]["highway"!~"."]')}nwr["shop"]["name"]${bb};nwr["tourism"="attraction"]["name"]${bb};nwr["attraction"]["name"]${bb};nwr["amenity"~"^(restaurant|fast_food|cafe|food_court|bar|pub|ice_cream|biergarten)$"]["name"]${bb};nwr["aerialway"="station"](28.32,-81.60,28.39,-81.50);nwr["station"="monorail"]${bb};node["railway"="station"]["monorail"="yes"]${bb};node["public_transport"~"^(station|stop_position)$"]["name"~"Monorail|Transportation and Ticket",i]${bb};);out center tags;`;
 }
 async function overpass(q) {
   for (const u of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
@@ -1158,6 +1252,10 @@ function buildPois(tp, osm) {
     if (['ride', 'dining', 'show'].includes(x.c) && tpBy[x.c]) {          // skip OSM copies of things ThemeParks.wiki already lists
       const nn = normName(x.n);
       if (nn.length >= 4 && tpBy[x.c].some((t) => (t.n === nn || (nn.length >= 5 && t.n.includes(nn)) || (t.n.length >= 5 && nn.includes(t.n))) && dist(x.la, x.lo, t.la, t.lo) < 250)) return;
+    }
+    if (['monorail', 'skyliner', 'bus'].includes(x.c)) {                   // station + stop_position copies of the same stop
+      const nn = normName(x.n);
+      if (out.some((o) => o.cat === x.c && normName(o.name) === nn && dist(o.lat, o.lon, x.la, x.lo) < 80)) return;
     }
     const ar = areaFor(x.la, x.lo);
     out.push({ id: 'o:' + x.i, name: x.n, cat: x.c, lat: x.la, lon: x.lo, park: ar ? ar.key : 'resorts' });
@@ -1204,7 +1302,7 @@ async function loadPois() {
   if (!tp.length) bits.push('Ride and restaurant positions could not be loaded from ThemeParks.wiki.');
   if (!osm.length) bits.push('Restroom, first aid, shop, bus and parking data could not be loaded from OpenStreetMap.');
   MAP.note = bits.join(' '); MAP.loaded = !!(tp.length || osm.length); MAP.loading = false;
-  updateStatus(); updateList(); drawMarkers(); renderFab(); refreshGlobal();
+  updateStatus(); updateList(); drawMarkers(); renderFab(); refreshGlobal(); refreshList(); refreshSprings();
 }
 
 function mapDom() {
@@ -1352,7 +1450,9 @@ function onGeo() {
   if (MAP.dest && !MAP.pin && o && MAP.lastFrom && dist(o.lat, o.lon, MAP.lastFrom.lat, MAP.lastFrom.lon) > 50 && Date.now() - MAP.lastAt > 20000) routeTo(MAP.dest, true);
 }
 async function openMap(opts = {}) {
-  mapDom(); $('#mapov').classList.remove('hidden'); document.body.style.overflow = 'hidden'; MAP.open = true;
+  mapDom();
+  if (opts.cat) { MAP.cat = opts.cat; MAP.q = ''; MAP.park = 'all'; const q0 = $('#mp-q'); if (q0) q0.value = ''; const p0 = $('#mp-park'); if (p0) p0.value = 'all'; }
+  $('#mapov').classList.remove('hidden'); document.body.style.overflow = 'hidden'; MAP.open = true;
   if (!MAP.init) { MAP.init = true; Geo.subs.add(onGeo); }
   ensureMap(); if (MAP.map) setTimeout(() => MAP.map.invalidateSize(), 80);
   if (Geo.perm === 'granted') Geo.watch();
@@ -1498,6 +1598,8 @@ document.addEventListener('click', async (ev) => {
   else if (a === 'map') openMap();
   else if (a === 'goto') openMap({ eid: el.dataset.id });
   else if (a === 'goto-poi') openMap({ pid: el.dataset.pid });
+  else if (a === 'mapcat') { openMap({ cat: el.dataset.v }); if (el.dataset.q) { MAP.q = el.dataset.q; const q1 = $('#mp-q'); if (q1) q1.value = el.dataset.q; updateChips(); updateList(); drawMarkers(); } }
+  else if (a === 'tsub') { S.tsub = el.dataset.v; render(); }
   else if (a === 'gcat') { S.gcat = el.dataset.v; refreshGlobal(); if (!MAP.loaded) loadPois(); }
   else if (a === 'map-close') closeMap();
   else if (a === 'here') hereIAm();
@@ -1550,7 +1652,7 @@ async function init() {
   const ids = LS.get(KEY.ids, null); if (ids) S.parkIds = ids.ids;
   S.tab = TABS.some(([k]) => k === location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', document.documentElement.classList.contains('dark') ? '#0a1326' : '#1e40af');
-  try { localStorage.removeItem('wdw.poi.osm'); } catch { /* ignore */ }
+  try { localStorage.removeItem('wdw.poi.osm'); localStorage.removeItem('wdw.poi.osm2'); } catch { /* ignore */ }
   poiCacheSync(); render(); setStatus(); loadWeather(); setTickerPaused(!!LS.get('wdw.tkPaused', false));
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   fetchServerStatus();
