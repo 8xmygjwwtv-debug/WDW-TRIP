@@ -15,7 +15,7 @@ const KEY = {
   prefs: 'wdw.prefs', cache: 'wdw.cache', prev: 'wdw.prev', log: 'wdw.log', sent: 'wdw.sent', plan: 'wdw.plan',
   logi: 'wdw.logistics', collect: 'wdw.collect', ids: 'wdw.parkIds', fab: 'wdw.fab', dealsSeen: 'wdw.dealsSeen',
   emailAt: 'wdw.emailAt', hours: 'wdw.hours', theme: 'wdw.theme',
-  news: 'wdw.news', lastPos: 'wdw.lastPos', poiTp: 'wdw.poi.tp', poiOsm: 'wdw.poi.osm'
+  news: 'wdw.news', lastPos: 'wdw.lastPos', poiTp: 'wdw.poi.tp', poiOsm: 'wdw.poi.osm2'
 };
 
 /* ---------- time helpers ---------- */
@@ -57,7 +57,7 @@ const S = {
   parkIds: {}, parks: {}, sched: {}, index: {},
   loading: false, lastRefresh: null, schedAt: 0,
   filters: { q: '', status: 'all', kind: 'ATTRACTION', sort: 'short', fav: false },
-  gq: '', deals: { items: [], at: null, error: null, loading: false },
+  gq: '', gcat: 'all', deals: { items: [], at: null, error: null, loading: false },
   prefs: loadPrefs(), server: { email: null, sms: null }, draft: null, cloudMsg: '', prevSnap: LS.get(KEY.prev, null), fromCache: false
 };
 
@@ -435,9 +435,11 @@ function viewOverview() {
 
   <section class="card p-4 mt-4">
     <h2 class="display text-lg font-bold mb-2">Search everything</h2>
-    <label class="sr-only" for="gq">Search attractions, shows and restaurants</label>
-    <input id="gq" class="input" type="search" placeholder="Search rides, shows, restaurants…" value="${esc(S.gq)}" autocomplete="off" />
-    <ul id="gres" class="mt-2">${globalResults()}</ul>
+    <label class="sr-only" for="gq">Search the full Walt Disney World directory</label>
+    <input id="gq" class="input" type="search" placeholder="Search rides, restaurants, kiosks, shops, restrooms…" value="${esc(S.gq)}" autocomplete="off" />
+    <div id="gchips" class="flex flex-wrap gap-1.5 mt-2" role="group" aria-label="Filter results">${globalChips()}</div>
+    <div id="gstatus" class="text-xs muted mt-2" aria-live="polite">${globalStatus()}</div>
+    <ul id="gres" class="mt-1">${globalResults()}</ul>
   </section>
 
   <section class="card p-4 mt-4">
@@ -446,11 +448,43 @@ function viewOverview() {
     <div class="grid gap-2 sm:grid-cols-2">${days.map((d) => planRow(d)).join('')}</div>
   </section>`;
 }
+const GCATS = [['all', 'All'], ['ride', 'Rides & attractions'], ['show', 'Shows'], ['dining', 'Dining & snacks'], ['shop', 'Shops & kiosks'], ['restroom', 'Restrooms'], ['firstaid', 'First aid'], ['guest', 'Guest services'], ['baby', 'Baby care'], ['entrance', 'Entrances / exits'], ['skyliner', 'Skyliner'], ['bus', 'Bus stops'], ['parking', 'Parking']];
+const LIVE_CAT = { ATTRACTION: 'ride', SHOW: 'show', RESTAURANT: 'dining' };
+function globalChips() { return GCATS.map(([k, l]) => `<button class="chip" data-act="gcat" data-v="${k}" aria-pressed="${S.gcat === k}">${l}</button>`).join(''); }
+function globalStatus() {
+  if (MAP.loading) return 'Loading the full Walt Disney World directory (shops, kiosks, Disney Springs, resorts). The first load can take up to a minute…';
+  if (!MAP.pois.length) return 'Start typing and the full directory will load.';
+  return `${MAP.pois.length.toLocaleString()} places in the directory plus live rides, shows and restaurants. Shops, kiosks, Disney Springs and resort places come from OpenStreetMap and can be incomplete.${MAP.note ? ' ' + esc(MAP.note) : ''}`;
+}
 function globalResults() {
-  const q = S.gq.trim().toLowerCase();
-  if (!q) return '<li class="muted text-sm py-2">Type to search across all four parks. Stars and bells work right here.</li>';
-  const all = Object.values(S.index).filter((e) => e.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 40);
-  return all.length ? all.map((e) => entityRow(e, { showPark: true })).join('') : '<li class="muted text-sm py-2">No matches. Try a shorter word.</li>';
+  const q = S.gq.trim().toLowerCase(); const cat = S.gcat || 'all';
+  if (!q && cat === 'all') return '<li class="muted text-sm py-2">Search rides, shows, restaurants, snack kiosks, shops, restrooms, Disney Springs and resorts. Or pick a category above.</li>';
+  const o = (typeof mapOrigin === 'function') ? mapOrigin() : null; const seen = new Set(); const rows = [];
+  Object.values(S.index).forEach((e) => {
+    const c = LIVE_CAT[e.type]; seen.add(e.id);
+    if ((cat === 'all' || cat === c) && (!q || e.name.toLowerCase().includes(q))) rows.push({ live: e, name: e.name, d: o && S.parks[e.park] ? null : null });
+  });
+  MAP.pois.forEach((p) => {
+    if (p.eid && seen.has(p.eid)) return;
+    if ((cat === 'all' || cat === p.cat) && (!q || p.name.toLowerCase().includes(q) || catDef(p.cat).label.toLowerCase().includes(q) || areaName(p.park).toLowerCase().includes(q)))
+      rows.push({ poi: p, name: p.name, d: o ? dist(o.lat, o.lon, p.lat, p.lon) : null });
+  });
+  if (!rows.length) return `<li class="muted text-sm py-2">${MAP.loading ? 'Still loading the directory…' : 'No matches. Try a shorter word or another category.'}</li>`;
+  rows.sort((x, y) => (x.d != null && y.d != null ? x.d - y.d : 0) || x.name.localeCompare(y.name));
+  const shown = rows.slice(0, 80);
+  return shown.map((r) => {
+    if (r.live) return entityRow(r.live, { showPark: true });
+    const p = r.poi; const c = catDef(p.cat);
+    return `<li class="flex items-center gap-2 py-2.5 border-t first:border-t-0" style="border-color:var(--line)"><span class="dot" style="--pc:${areaColor(p.park)}" aria-hidden="true"></span>
+      <div class="min-w-0 flex-1"><div class="font-semibold leading-snug">${c.icon} ${esc(p.name)}</div><div class="text-xs muted">${esc(areaName(p.park))} · ${esc(c.label)}${r.d != null ? ` · ${fmtDist(r.d)}` : ''}</div></div>
+      <button class="btn btn-sm" data-act="goto-poi" data-pid="${esc(p.id)}">Directions</button></li>`;
+  }).join('') + (rows.length > shown.length ? `<li class="muted text-xs py-2">Showing the first ${shown.length} of ${rows.length}. Type more letters to narrow it down.</li>` : '');
+}
+function refreshGlobal() {
+  const r = $('#gres'); if (!r) return;
+  const c = $('#gchips'); if (c) c.innerHTML = globalChips();
+  const s = $('#gstatus'); if (s) s.innerHTML = globalStatus();
+  r.innerHTML = globalResults();
 }
 const PLAN_OPTS = [['', 'Not set'], ['mk', 'Magic Kingdom'], ['epcot', 'EPCOT'], ['hs', 'Hollywood Studios'], ['ak', 'Animal Kingdom'], ['springs', 'Disney Springs'], ['rest', 'Rest / pool day']];
 function planRow(d) {
@@ -719,6 +753,7 @@ function viewHelp() {
   <section class="card p-4 mt-4 text-sm space-y-2"><h3 class="display font-bold text-lg">How the bots get your updates</h3>
     <p>Each message has a clear subject like <em>[WDW Dashboard] Travel Update – Sync Request</em>, a plain-text summary, and a JSON block for easy parsing. Replies come back to the address you put in “From / reply-to”.</p></section>
   <section class="card p-4 mt-4 text-sm space-y-2"><h3 class="display font-bold text-lg">Good to know</h3><ul class="list-disc pl-5 space-y-1.5">
+    <li>The bottom banner keeps scrolling even if your phone's Reduce Motion setting is on. Tap ⏸ to pause it; your choice is remembered.</li>
     <li>Waits are standby estimates from ThemeParks.wiki and can lag a few minutes. Confirm in the official Disney app.</li>
     <li>Restaurant walk-up data and menus are only shown when published. Menu links open a web search.</li>
     <li>Cloud alerts watch the same rides you set here. Open Deals & Alerts, flip Cloud alerts on, and tap Save to cloud now.</li>
@@ -896,7 +931,7 @@ document.addEventListener('change', (ev) => {
 });
 document.addEventListener('input', (ev) => {
   const t = ev.target;
-  if (t.id === 'gq') { S.gq = t.value; $('#gres').innerHTML = globalResults(); }
+  if (t.id === 'gq') { S.gq = t.value; refreshGlobal(); if (!MAP.loaded) loadPois(); }
   else if (t.id === 'pq') { S.filters.q = t.value; refreshList(); }
   else if (t.dataset.logi) { const L = LS.get(KEY.logi, {}); L[t.dataset.logi] = t.value; LS.set(KEY.logi, L); }
   else if (t.dataset.pref && t.type !== 'checkbox') { setPath(S.prefs, t.dataset.pref, t.dataset.num ? Number(t.value) : t.value.trim()); savePrefs(); }
@@ -949,8 +984,9 @@ const dist = (la1, lo1, la2, lo2) => {
 };
 const fmtDist = (m) => (m < 305 ? `${Math.round(m * 3.281 / 10) * 10} ft` : `${(m / 1609.34).toFixed(m < 1609 ? 2 : 1)} mi`);
 const walkMin = (m) => Math.max(1, Math.round(m / 80));
-const areaName = (k) => D.areas.find((a) => a.key === k)?.name || '';
+const areaName = (k) => D.areas.find((a) => a.key === k)?.name || (k === 'resorts' ? 'Resorts & other WDW' : '');
 const areaColor = (k) => D.areas.find((a) => a.key === k)?.color || '#475569';
+const normName = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
 function areaFor(lat, lon) {
   let best = null, bd = 1e12;
   D.areas.forEach((a) => { const d = dist(lat, lon, a.lat, a.lon); if (d < bd) { bd = d; best = a; } });
@@ -1040,6 +1076,12 @@ function tickerItems() {
   return it;
 }
 let tkSig = '';
+function setTickerPaused(p) {
+  const t = $('#ticker'), b = $('#tk-pause'); if (!t || !b) return;
+  t.classList.toggle('paused', p); b.textContent = p ? '▶' : '⏸';
+  b.setAttribute('aria-label', p ? 'Resume scrolling' : 'Pause scrolling'); b.title = b.getAttribute('aria-label');
+  LS.set('wdw.tkPaused', p);
+}
 function renderTicker() {
   const el = $('#tk-track'); if (!el) return;
   const loc = $('#tk-loc'); if (loc) loc.classList.toggle('hidden', Geo.perm === 'granted');
@@ -1087,18 +1129,19 @@ function classify(t) {
   if (t.entrance || /entrance|main gate|turnstile/i.test(n)) return 'entrance';
   if (t.shop) return 'shop';
   if (t.tourism === 'attraction' || t.attraction) return 'ride';
-  if (['restaurant', 'fast_food', 'cafe', 'bar', 'food_court'].includes(t.amenity)) return 'dining';
+  if (['restaurant', 'fast_food', 'cafe', 'bar', 'pub', 'ice_cream', 'biergarten', 'food_court'].includes(t.amenity)) return 'dining';
   return null;
 }
 const DEFAULT_NAME = { restroom: 'Restroom', bus: 'Bus stop', skyliner: 'Skyliner station', parking: 'Parking', firstaid: 'First aid' };
 function overpassQuery() {
   const around = D.areas.map((a) => `(around:${a.r},${a.lat},${a.lon})`);
   const f = (sel) => around.map((ar) => `nwr${sel}${ar};`).join('');
-  return `[out:json][timeout:60];(${f('["amenity"="toilets"]')}${f('["amenity"~"^(first_aid|clinic|doctors)$"]')}${f('["name"~"First Aid|Guest Relations|Guest Services|Baby Care|Lost and Found",i]')}${f('["shop"]["name"]')}${f('["highway"="bus_stop"]')}${f('["amenity"="bus_station"]')}${f('["amenity"="parking"]["name"]')}${f('["entrance"]["name"]')}${f('["name"~"Main Entrance|Park Entrance|Turnstile",i]["highway"!~"."]')}${f('["tourism"="attraction"]["name"]')}${f('["amenity"~"^(restaurant|fast_food|cafe|food_court)$"]["name"]')}nwr["aerialway"="station"](28.32,-81.60,28.39,-81.50););out center tags;`;
+  const bb = `(${D.bbox.join(',')})`;   // whole Walt Disney World property: shops, kiosks, dining, rides, resorts
+  return `[out:json][timeout:90];(${f('["amenity"="toilets"]')}${f('["amenity"~"^(first_aid|clinic|doctors)$"]')}${f('["name"~"First Aid|Guest Relations|Guest Services|Baby Care|Lost and Found",i]')}${f('["highway"="bus_stop"]')}${f('["amenity"="bus_station"]')}${f('["amenity"="parking"]["name"]')}${f('["entrance"]["name"]')}${f('["name"~"Main Entrance|Park Entrance|Turnstile",i]["highway"!~"."]')}nwr["shop"]["name"]${bb};nwr["tourism"="attraction"]["name"]${bb};nwr["attraction"]["name"]${bb};nwr["amenity"~"^(restaurant|fast_food|cafe|food_court|bar|pub|ice_cream|biergarten)$"]["name"]${bb};nwr["aerialway"="station"](28.32,-81.60,28.39,-81.50););out center tags;`;
 }
 async function overpass(q) {
   for (const u of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
-    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 50000);
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 85000);
     try { const r = await fetch(u, { method: 'POST', body: 'data=' + enc(q), headers: { 'content-type': 'application/x-www-form-urlencoded' }, signal: ctl.signal }); if (r.ok) return await r.json(); } catch { /* try the next mirror */ } finally { clearTimeout(t); }
   }
   throw new Error('Overpass unavailable');
@@ -1110,15 +1153,23 @@ function poiCacheSync() {
 function buildPois(tp, osm) {
   const out = [];
   tp.forEach((x) => out.push({ id: 't:' + x.i, eid: x.i, name: x.n, cat: x.c, lat: x.la, lon: x.lo, park: x.p }));
-  osm.forEach((x) => { if (tp.length && ['ride', 'dining', 'show'].includes(x.c)) return; out.push({ id: 'o:' + x.i, name: x.n, cat: x.c, lat: x.la, lon: x.lo, park: nearestArea(x.la, x.lo).key }); });
+  const tpBy = {}; tp.forEach((x) => (tpBy[x.c] ||= []).push({ n: normName(x.n), la: x.la, lo: x.lo }));
+  osm.forEach((x) => {
+    if (['ride', 'dining', 'show'].includes(x.c) && tpBy[x.c]) {          // skip OSM copies of things ThemeParks.wiki already lists
+      const nn = normName(x.n);
+      if (nn.length >= 4 && tpBy[x.c].some((t) => (t.n === nn || (nn.length >= 5 && t.n.includes(nn)) || (t.n.length >= 5 && nn.includes(t.n))) && dist(x.la, x.lo, t.la, t.lo) < 250)) return;
+    }
+    const ar = areaFor(x.la, x.lo);
+    out.push({ id: 'o:' + x.i, name: x.n, cat: x.c, lat: x.la, lon: x.lo, park: ar ? ar.key : 'resorts' });
+  });
   MAP.pois = out; MAP.by = Object.fromEntries(out.map((p) => [p.id, p]));
 }
 async function loadPois() {
   if (MAP.loading) return;
   const tpC = LS.get(KEY.poiTp, null), osmC = LS.get(KEY.poiOsm, null);
   const freshTp = tpC && Date.now() - tpC.t < 7 * 864e5, freshOsm = osmC && Date.now() - osmC.t < 14 * 864e5;
-  if (freshTp && freshOsm) { buildPois(tpC.list, osmC.list); MAP.loaded = true; updateStatus(); updateList(); drawMarkers(); return; }
-  MAP.loading = true; MAP.note = ''; updateStatus(); updateList();
+  if (freshTp && freshOsm) { buildPois(tpC.list, osmC.list); MAP.loaded = true; updateStatus(); updateList(); drawMarkers(); refreshGlobal(); return; }
+  MAP.loading = true; MAP.note = ''; updateStatus(); updateList(); refreshGlobal();
   const [a, b] = await Promise.allSettled([
     freshTp ? Promise.resolve(tpC.list) : (async () => {
       if (!Object.keys(S.parkIds).length) await discoverParks();
@@ -1153,7 +1204,7 @@ async function loadPois() {
   if (!tp.length) bits.push('Ride and restaurant positions could not be loaded from ThemeParks.wiki.');
   if (!osm.length) bits.push('Restroom, first aid, shop, bus and parking data could not be loaded from OpenStreetMap.');
   MAP.note = bits.join(' '); MAP.loaded = !!(tp.length || osm.length); MAP.loading = false;
-  updateStatus(); updateList(); drawMarkers(); renderFab();
+  updateStatus(); updateList(); drawMarkers(); renderFab(); refreshGlobal();
 }
 
 function mapDom() {
@@ -1164,7 +1215,7 @@ function mapDom() {
       <div class="mapov-panel"><div class="p-3 space-y-2">
         <div class="flex gap-2"><button class="btn btn-primary flex-1" data-act="here">📍 Here I am</button><button id="mp-pin" class="btn" data-act="pin">Pin my spot</button></div>
         <div id="mp-status" class="text-sm" aria-live="polite"></div><div id="mp-route"></div>
-        <div class="grid grid-cols-2 gap-2"><div><label class="sr-only" for="mp-park">Park</label><select id="mp-park" class="input"><option value="all">All areas</option>${D.areas.map((a) => `<option value="${a.key}">${a.name}</option>`).join('')}</select></div>
+        <div class="grid grid-cols-2 gap-2"><div><label class="sr-only" for="mp-park">Park</label><select id="mp-park" class="input"><option value="all">All areas</option>${D.areas.map((a) => `<option value="${a.key}">${a.name}</option>`).join('')}<option value="resorts">Resorts &amp; other WDW</option></select></div>
           <div><label class="sr-only" for="mp-q">Directions to</label><input id="mp-q" class="input" type="search" placeholder="Directions to…" autocomplete="off"/></div></div>
         <div id="mp-chips" class="flex flex-wrap gap-1.5" role="group" aria-label="Place type"></div></div>
         <ul id="mp-list" class="px-3 pb-3"></ul>
@@ -1308,7 +1359,8 @@ async function openMap(opts = {}) {
   updateChips(); updateStatus(); updateList(); drawUser(); drawMarkers(); $('#mp-close')?.focus();
   const o = mapOrigin(); if (o && MAP.map && !opts.eid) MAP.map.setView([o.lat, o.lon], 17);
   await loadPois();
-  if (opts.eid) {
+  if (opts.pid) { const p = MAP.by[opts.pid]; if (p) { MAP.q = ''; const q = $('#mp-q'); if (q) q.value = ''; routeTo(p); } }
+  else if (opts.eid) {
     const p = MAP.pois.find((x) => x.eid === opts.eid);
     if (p) { MAP.q = ''; const q = $('#mp-q'); if (q) q.value = ''; routeTo(p); }
     else { const e = S.index[opts.eid]; toast('No exact map position yet', 'Opening Google Maps search instead.'); window.open(`https://www.google.com/maps/search/?api=1&query=${enc((e?.name || '') + ' Walt Disney World')}`, '_blank', 'noopener'); }
@@ -1445,6 +1497,8 @@ document.addEventListener('click', async (ev) => {
   if (a === 'camera') openCamera();
   else if (a === 'map') openMap();
   else if (a === 'goto') openMap({ eid: el.dataset.id });
+  else if (a === 'goto-poi') openMap({ pid: el.dataset.pid });
+  else if (a === 'gcat') { S.gcat = el.dataset.v; refreshGlobal(); if (!MAP.loaded) loadPois(); }
   else if (a === 'map-close') closeMap();
   else if (a === 'here') hereIAm();
   else if (a === 'pin') { if (MAP.pin) { MAP.pin = null; drawUser(); } else { MAP.pinMode = !MAP.pinMode; $('#mp-map')?.classList.toggle('pinning', MAP.pinMode); } updateStatus(); updateList(); drawMarkers(); if (!MAP.pin && !MAP.pinMode && MAP.dest) routeTo(MAP.dest); }
@@ -1465,7 +1519,7 @@ document.addEventListener('click', async (ev) => {
   else if (a === 'ph-phone') { const id = el.dataset.id; const meta = await dbDo('meta', 'readonly', (st) => st.get(id)); const full = await dbDo('full', 'readonly', (st) => st.get(id));
     const r = await saveToPhone(full, `wdw-${etDate(new Date(meta.takenAt))}-${id.slice(0, 6)}.jpg`, meta.caption); setMsg('ph-msg', r === 'cancelled' ? '' : r === 'shared' ? 'Use “Save Image” in the share sheet to add it to your photos.' : 'Downloaded. Check your Downloads or Photos app.'); }
   else if (a === 'ph-del') { if (!confirm('Delete this photo from the trip gallery?')) return; const id = el.dataset.id; await dbDo('meta', 'readwrite', (st) => st.delete(id)); await dbDo('full', 'readwrite', (st) => st.delete(id)); closeModal(); toast('Photo deleted'); }
-  else if (a === 'tk-pause') { const t = $('#ticker'); const p = t.classList.toggle('paused'); el.textContent = p ? '▶' : '⏸'; el.setAttribute('aria-label', p ? 'Resume scrolling' : 'Pause scrolling'); }
+  else if (a === 'tk-pause') { setTickerPaused(!$('#ticker').classList.contains('paused')); }
   else if (a === 'tk-loc') { const p = await Geo.once({ maximumAge: 0 }); if (!p) toast('Location not available', Geo.err?.code === 1 ? 'Allow location for this site in your browser settings. Showing Orlando-area weather.' : 'Showing Orlando-area weather.'); loadWeather(true); }
 });
 document.addEventListener('change', async (ev) => {
@@ -1496,7 +1550,8 @@ async function init() {
   const ids = LS.get(KEY.ids, null); if (ids) S.parkIds = ids.ids;
   S.tab = TABS.some(([k]) => k === location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', document.documentElement.classList.contains('dark') ? '#0a1326' : '#1e40af');
-  poiCacheSync(); render(); setStatus(); loadWeather();
+  try { localStorage.removeItem('wdw.poi.osm'); } catch { /* ignore */ }
+  poiCacheSync(); render(); setStatus(); loadWeather(); setTickerPaused(!!LS.get('wdw.tkPaused', false));
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   fetchServerStatus();
   await refresh();

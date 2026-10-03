@@ -195,16 +195,19 @@ window.WDW_DATA.areas = [
 ];
 window.WDW_DATA.poiCats = [
   { k: 'must',     label: 'Must-dos',          icon: '\u2B50' },
-  { k: 'ride',     label: 'Rides',             icon: '\uD83C\uDFA2' },
+  { k: 'ride',     label: 'Rides & attractions',           icon: '\uD83C\uDFA2' },
   { k: 'show',     label: 'Shows',             icon: '\uD83C\uDFAD' },
-  { k: 'dining',   label: 'Dining',            icon: '\uD83C\uDF74' },
+  { k: 'dining',   label: 'Dining & snacks', icon: '\uD83C\uDF74' },
   { k: 'restroom', label: 'Restrooms',         icon: '\uD83D\uDEBB' },
   { k: 'firstaid', label: 'First aid',         icon: '\u26D1\uFE0F' },
   { k: 'guest',    label: 'Guest services',    icon: '\u2139\uFE0F' },
   { k: 'baby',     label: 'Baby care',         icon: '\uD83C\uDF7C' },
-  { k: 'shop',     label: 'Shops',             icon: '\uD83D\uDECD\uFE0F' },
+  { k: 'shop',     label: 'Shops & kiosks', icon: '\uD83D\uDECD\uFE0F' },
   { k: 'entrance', label: 'Entrances / exits', icon: '\uD83D\uDEAA' },
   { k: 'skyliner', label: 'Skyliner',          icon: '\uD83D\uDEA1' },
   { k: 'bus',      label: 'Bus stops',         icon: '\uD83D\uDE8C' },
   { k: 'parking',  label: 'Parking',           icon: '\uD83C\uDD7F\uFE0F' }
 ];
+
+/* Search box around the whole Walt Disney World property (south, west, north, east) for shops, kiosks, dining, rides and resorts. */
+window.WDW_DATA.bbox = [28.33, -81.63, 28.44, -81.49];
