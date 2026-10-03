@@ -1,7 +1,7 @@
 /* WDW Trip Dashboard — vanilla JS. Data: ThemeParks.wiki (via /api/tp proxy, with direct fallback). */
 (() => {
 'use strict';
-const APP_VERSION = '2026-10-03.5';
+const APP_VERSION = '2026-10-03.6';
 const D = window.WDW_DATA;
 const TZ = D.trip.tz;
 const $ = (s, el = document) => el.querySelector(s);
@@ -16,7 +16,7 @@ const KEY = {
   prefs: 'wdw.prefs', cache: 'wdw.cache', prev: 'wdw.prev', log: 'wdw.log', sent: 'wdw.sent', plan: 'wdw.plan',
   logi: 'wdw.logistics', collect: 'wdw.collect', ids: 'wdw.parkIds', fab: 'wdw.fab', dealsSeen: 'wdw.dealsSeen',
   emailAt: 'wdw.emailAt', hours: 'wdw.hours', theme: 'wdw.theme',
-  news: 'wdw.news', lastPos: 'wdw.lastPos', poiTp: 'wdw.poi.tp', poiOsm: 'wdw.poi.osm3'
+  news: 'wdw.news', itin: 'wdw.itin', itinChecks: 'wdw.itinChecks', lastPos: 'wdw.lastPos', poiTp: 'wdw.poi.tp', poiOsm: 'wdw.poi.osm3'
 };
 
 /* ---------- time helpers ---------- */
@@ -399,6 +399,90 @@ function dateSelect() {
   return `<label class="sr-only" for="sel-date">Date</label><select id="sel-date" class="input" style="width:auto" data-act="date">${days.map((d) => `<option value="${d}" ${d === S.viewDate ? 'selected' : ''}>${fmtDay(d)}${d === today ? ' (today)' : ''}</option>`).join('')}</select>`;
 }
 
+/* ---------- ITINERARY (private trip sheet, imported on this device; never stored in the repo) ---------- */
+(() => {
+  const st = document.createElement('style');
+  st.textContent = '.it-sum{display:flex;gap:.6rem;align-items:center;cursor:pointer}.it-date{flex:none;width:6.2rem;font-weight:700}.it-title{flex:1;min-width:0;line-height:1.3}'
+    + '.it-list{list-style:none;margin:.6rem 0 0;padding:0;display:grid;gap:.5rem}.it-row{display:flex;gap:.6rem;font-size:.9rem;line-height:1.35}.it-time{flex:none;width:6.6rem;font-weight:700;font-variant-numeric:tabular-nums}'
+    + '.it-body{min-width:0;flex:1}.it-plan{display:flex;align-items:center;gap:.5rem;margin-top:.7rem;font-size:.8rem}';
+  document.head.appendChild(st);
+})();
+S.openDays = new Set(days.includes(today) ? [today] : []); S.showConf = false;
+const getItin = () => LS.get(KEY.itin, null);
+function normalizeItin(raw) {
+  if (!raw || !Array.isArray(raw.days)) throw new Error('This file doesn\'t look like a trip sheet (no "days" list).');
+  const s = (v, n = 400) => String(v ?? '').slice(0, n); const at = (v) => (Number.isFinite(Date.parse(v)) ? String(v) : '');
+  const out = {
+    version: 1, title: s(raw.title, 120), prepared: s(raw.prepared, 40), preparedBy: s(raw.preparedBy, 60),
+    days: raw.days.slice(0, 30).map((d) => ({ date: /^\d{4}-\d{2}-\d{2}$/.test(d?.date) ? d.date : '', title: s(d?.title, 120), park: s(d?.park, 12),
+      items: (Array.isArray(d?.items) ? d.items : []).slice(0, 40).map((i) => ({ time: s(i?.time, 40), text: s(i?.text, 500), ref: s(i?.ref, 60), at: at(i?.at) })) })).filter((d) => d.date).sort((x, y) => x.date.localeCompare(y.date)),
+    confirmations: (Array.isArray(raw.confirmations) ? raw.confirmations : []).slice(0, 60).map((c) => ({ group: s(c?.group, 40), label: s(c?.label, 120), value: s(c?.value, 80), detail: s(c?.detail, 600), tel: s(c?.tel, 20).replace(/[^\d+]/g, '') })),
+    gaps: (Array.isArray(raw.gaps) ? raw.gaps : []).slice(0, 30).map((g, i) => ({ id: s(g?.id || 'g' + i, 20), text: s(g?.text, 600) })),
+    deadlines: (Array.isArray(raw.deadlines) ? raw.deadlines : []).slice(0, 10).map((x) => ({ at: at(x?.at), text: s(x?.text, 200) })).filter((x) => x.at)
+  };
+  if (!out.days.length) throw new Error('No valid days found in this file.');
+  return out;
+}
+const relTime = (ms) => { const m = Math.round(ms / 60000); if (m < 1) return 'now'; if (m < 60) return `in ${m} min`; const h = Math.floor(m / 60); if (h < 48) return `in ${h} h${m % 60 ? ` ${m % 60} min` : ''}`; return `in ${Math.round(m / 1440)} days`; };
+function upcomingItems(it, windowMs) {
+  const now = Date.now(); const up = [];
+  it.days.forEach((d) => d.items.forEach((i) => { const t = i.at ? Date.parse(i.at) : NaN; if (t > now - 15 * 60e3 && t < now + windowMs) up.push({ d, i, t }); }));
+  return up.sort((x, y) => x.t - y.t);
+}
+function planSelect(d) { const v = LS.get(KEY.plan, {})[d] || ''; return `<select class="input" style="max-width:15rem" data-act="plan" data-day="${d}" aria-label="Park for ${fmtDay(d)}">${PLAN_OPTS.map(([k, l]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`; }
+const refChip = (v) => (v ? ` <button class="chip" style="min-height:24px;padding:.05rem .5rem;font-size:.72rem" data-act="copy" data-v="${esc(v)}" aria-label="Copy confirmation number">${S.showConf ? '#' + esc(v) : '# ••••'} ⧉</button>` : '');
+function dayCard(d) {
+  const isToday = d.date === today; const open = S.openDays.has(d.date);
+  return `<details class="card-flat p-3" data-day="${d.date}" ${open ? 'open' : ''}>
+    <summary class="it-sum"><span class="it-date">${fmtDay(d.date)}</span><span class="it-title">${esc(d.title)}</span>${isToday ? '<span class="chip" style="cursor:default;min-height:22px;padding:.05rem .5rem">Today</span>' : ''}</summary>
+    <ul class="it-list">${d.items.map((i) => `<li class="it-row"><span class="it-time">${esc(i.time)}</span><span class="it-body">${esc(i.text)}${refChip(i.ref)}</span></li>`).join('')}</ul>
+    <div class="it-plan"><span class="muted">Park plan</span>${planSelect(d.date)}</div></details>`;
+}
+function confSection(it) {
+  if (!it.confirmations.length) return '';
+  const groups = [...new Set(it.confirmations.map((c) => c.group))];
+  const mask = (v) => (S.showConf ? esc(v) : '••••••');
+  return `<section class="card p-4 mt-4"><div class="flex items-center justify-between gap-2"><h2 class="display text-lg font-bold">Key confirmations</h2><button class="btn btn-sm" data-act="conf-toggle" aria-pressed="${S.showConf}">${S.showConf ? 'Hide numbers' : 'Show numbers'}</button></div>
+    <p class="text-xs muted">Numbers are hidden until you tap Show. Copy works either way. Stored on this device only.</p>
+    ${groups.map((g) => `<h3 class="font-semibold mt-3">${esc(g)}</h3><ul>${it.confirmations.filter((c) => c.group === g).map((c) => `<li class="py-2 border-t first:border-t-0" style="border-color:var(--line)"><div class="flex items-center gap-2"><div class="min-w-0 flex-1"><div class="text-sm font-semibold">${esc(c.label)}</div>${c.detail ? `<div class="text-xs muted">${esc(c.detail)}</div>` : ''}</div>
+      ${c.value ? `<code class="text-sm">${mask(c.value)}</code><button class="btn btn-sm" data-act="copy" data-v="${esc(c.value)}" aria-label="Copy ${esc(c.label)}">Copy</button>` : ''}${c.tel ? `<a class="btn btn-sm" href="tel:${esc(c.tel)}">Call</a>` : ''}</div></li>`).join('')}</ul>`).join('')}</section>`;
+}
+function gapsSection(it) {
+  if (!it.gaps.length) return '';
+  const ch = LS.get(KEY.itinChecks, {});
+  return `<section class="card p-4 mt-4"><h2 class="display text-lg font-bold">Things to confirm</h2><p class="text-xs muted">Tick items off as you handle them.</p>
+    <ul>${it.gaps.map((g) => `<li class="py-2 border-t first:border-t-0" style="border-color:var(--line)"><label class="flex items-start gap-2"><input type="checkbox" class="mt-1" data-act="gapchk" data-id="${esc(g.id)}" ${ch[g.id] ? 'checked' : ''}/><span class="text-sm">${esc(g.text)}</span></label></li>`).join('')}</ul></section>`;
+}
+function plannerHtml() {
+  const it = getItin();
+  const file = '<input id="itin-file" type="file" accept="application/json,.json" hidden/>';
+  if (!it) return `<section class="card p-4 mt-4"><div class="flex flex-wrap items-center justify-between gap-2"><h2 class="display text-lg font-bold">Day planner</h2><button class="btn btn-sm" data-act="itin-import">Import trip sheet</button></div>${file}
+    <p class="text-sm muted mb-3">Pick a park for each day, or import your Grok Bot trip sheet (a .json file) to see the full day-by-day itinerary, confirmations and reminders. The sheet stays on this device.</p><p id="itin-msg" class="text-sm mb-2" role="status"></p>
+    <div class="grid gap-2 sm:grid-cols-2">${days.map((d) => planRow(d)).join('')}</div></section>`;
+  const now = Date.now(); const next = upcomingItems(it, 400 * 864e5).slice(0, 2);
+  const dl = it.deadlines.filter((x) => Date.parse(x.at) > now).sort((x, y) => Date.parse(x.at) - Date.parse(y.at)).slice(0, 2);
+  return `<section class="card p-4 mt-4"><div class="flex flex-wrap items-center justify-between gap-2"><h2 class="display text-lg font-bold">Day planner</h2>
+      <div class="flex gap-2"><button class="btn btn-sm" data-act="itin-import">Replace sheet</button><button class="btn btn-sm" data-act="itin-clear">Remove</button></div></div>${file}
+    <p class="text-xs muted">${esc(it.title)}${it.prepared ? ` · prepared ${esc(it.prepared)}` : ''}${it.preparedBy ? ` by ${esc(it.preparedBy)}` : ''}</p><p id="itin-msg" class="text-sm" role="status"></p>
+    ${dl.length ? `<div class="card-flat p-3 mt-3 text-sm" role="note">${dl.map((x) => `⚠️ <strong>${esc(x.text)}</strong> ${relTime(Date.parse(x.at) - now)} (${esc(new Date(x.at).toLocaleString('en-US', { timeZone: TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))})`).join('<br/>')}</div>` : ''}
+    ${next.length ? `<div class="card-flat p-3 mt-3"><div class="font-semibold text-sm mb-1">Next up</div><ul class="text-sm space-y-1">${next.map(({ d, i, t }) => `<li>⏰ ${fmtDay(d.date)} ${esc(i.time)} · ${esc(i.text)} <span class="muted">(${relTime(t - now)})</span></li>`).join('')}</ul></div>` : ''}
+    <div class="space-y-2 mt-3">${it.days.map(dayCard).join('')}</div></section>${confSection(it)}${gapsSection(it)}`;
+}
+function importItin(file) {
+  const msg = (t, bad) => { const el = $('#itin-msg'); if (el) { el.textContent = t; el.style.color = bad ? 'var(--bad-ink)' : 'var(--ok-ink)'; } };
+  if (file.size > 600000) return msg('That file is too big to be a trip sheet.', true);
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const it = normalizeItin(JSON.parse(rd.result)); LS.set(KEY.itin, it);
+      const plan = LS.get(KEY.plan, {}); it.days.forEach((d) => { if (d.park && !plan[d.date] && PLAN_OPTS.some(([k]) => k === d.park)) plan[d.date] = d.park; }); LS.set(KEY.plan, plan);
+      S.openDays = new Set(days.includes(today) ? [today] : []); toast('Trip sheet imported', `${it.days.length} days, ${it.confirmations.length} confirmations`); render();
+    } catch (e) { msg(`Couldn't read that file: ${e.message}`, true); }
+  };
+  rd.onerror = () => msg('Could not read the file.', true);
+  rd.readAsText(file);
+}
+
 /* ---------- OVERVIEW ---------- */
 function viewOverview() {
   const du = daysUntil(D.trip.start);
@@ -443,11 +527,7 @@ function viewOverview() {
     <ul id="gres" class="mt-1">${globalResults()}</ul>
   </section>
 
-  <section class="card p-4 mt-4">
-    <h2 class="display text-lg font-bold">Day planner</h2>
-    <p class="text-sm muted mb-3">Pick a park for each day. Saved on this device and included in your Travel Manager sync.</p>
-    <div class="grid gap-2 sm:grid-cols-2">${days.map((d) => planRow(d)).join('')}</div>
-  </section>`;
+  ${plannerHtml()}`;
 }
 const GCATS = [['all', 'All'], ['ride', 'Rides & attractions'], ['show', 'Shows'], ['dining', 'Dining & snacks'], ['shop', 'Shops & kiosks'], ['restroom', 'Restrooms'], ['firstaid', 'First aid'], ['guest', 'Guest services'], ['baby', 'Baby care'], ['entrance', 'Entrances / exits'], ['skyliner', 'Skyliner'], ['monorail', 'Monorail'], ['bus', 'Bus stops'], ['parking', 'Parking']];
 const LIVE_CAT = { ATTRACTION: 'ride', SHOW: 'show', RESTAURANT: 'dining' };
@@ -489,7 +569,7 @@ function refreshGlobal() {
   const s = $('#gstatus'); if (s) s.innerHTML = globalStatus();
   r.innerHTML = globalResults();
 }
-const PLAN_OPTS = [['', 'Not set'], ['mk', 'Magic Kingdom'], ['epcot', 'EPCOT'], ['hs', 'Hollywood Studios'], ['ak', 'Animal Kingdom'], ['springs', 'Disney Springs'], ['rest', 'Rest / pool day']];
+const PLAN_OPTS = [['', 'Not set'], ['mk', 'Magic Kingdom'], ['epcot', 'EPCOT'], ['hs', 'Hollywood Studios'], ['ak', 'Animal Kingdom'], ['springs', 'Disney Springs'], ['rest', 'Rest / pool day'], ['trip', 'Day trip / family'], ['travel', 'Travel day']];
 function planRow(d) {
   const plan = LS.get(KEY.plan, {}); const v = plan[d] || '';
   return `<div class="card-flat p-2 flex items-center gap-2"><div class="w-24 shrink-0 text-sm font-semibold">${fmtDay(d)}</div>
@@ -765,6 +845,7 @@ function viewSync() {
       <div><label class="lbl" for="sy-bot">Which bot</label><input id="sy-bot" class="input" value="${esc(LS.get('wdw.bot', 'Travel Manager'))}" placeholder="Travel Manager, or All bots" /></div></div>
     <label class="lbl mt-3" for="sy-q">Question or request (optional for a plain sync)</label>
     <textarea id="sy-q" class="input" rows="3" placeholder="e.g. Can you confirm the shuttle pickup times for Nov 1?"></textarea>
+    ${getItin() ? '<label class="flex items-center gap-2 mt-2 text-sm"><input type="checkbox" id="sy-conf"/> Also include confirmation numbers (off by default)</label>' : ''}
     <div class="flex flex-wrap gap-2 mt-2">${D.quickAsks.map((q, i) => `<button class="chip" data-act="quick" data-i="${i}">${esc(q)}</button>`).join('')}</div>
     <div class="flex flex-wrap gap-2 mt-3"><button class="btn btn-primary" data-act="draft" data-kind="sync">Sync with Travel Manager</button><button class="btn" data-act="draft" data-kind="ask">Ask Grok Bots</button></div></section>
   ${d ? `<section class="card p-4 mt-4" id="draft-card"><h3 class="display font-bold text-lg mb-2">Draft</h3>
@@ -878,6 +959,7 @@ function buildDraft(kind) {
   const planName = Object.fromEntries(PLAN_OPTS);
   const must = resolvePriority().map(({ def, ent }) => ({ name: def.label, park: parkDef(def.park).name, status: ent?.status || 'UNKNOWN', waitMinutes: ent?.wait ?? null }));
   const hours = D.parks.map((p) => { const h = hoursFor(p.key, S.viewDate); return { park: p.name, date: S.viewDate, open: h.open ? fmtTime(h.open) : null, close: h.close ? fmtTime(h.close) : null, events: h.events.map((x) => x.description || 'Special event'), extraHours: h.extra.map((x) => x.description || 'Extra hours') }; });
+  const itn = getItin(); const withConf = !!$('#sy-conf')?.checked;
   const subject = kind === 'sync' ? `[WDW Dashboard] Travel Update – Sync Request: ${topic}` : `[WDW Dashboard] Travel Update – Question for ${bot}: ${topic}`;
   const et = new Date().toLocaleString('en-US', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' });
   const recent = LS.get(KEY.log, []).slice(0, 5);
@@ -888,6 +970,8 @@ function buildDraft(kind) {
     'TRIP', `- Dates: ${D.trip.start} to ${D.trip.end}`, `- Travelers: ${D.trip.adults} adults`, `- Hotel: ${D.trip.hotel}`, `- Scope: Magic Kingdom, EPCOT, Hollywood Studios, Animal Kingdom, Disney Springs`, '',
     q ? 'QUESTION / REQUEST' : 'REQUEST', q || 'Please review the details below and reply with anything missing, conflicting, or worth changing.', '',
     'DAY PLAN', ...days.map((d) => `- ${fmtDay(d)}: ${planName[plan[d] || ''] || 'Not set'}`), '',
+    ...(itn ? ['ITINERARY (from trip sheet)', ...itn.days.flatMap((d) => [`- ${fmtDay(d.date)}: ${d.title}`, ...d.items.map((i) => `    ${i.time}: ${i.text}`)]), ''] : []),
+    ...(itn && withConf ? ['CONFIRMATIONS (included at your request)', ...itn.confirmations.filter((c) => c.value).map((c) => `- ${c.group} / ${c.label}: ${c.value}`), ''] : []),
     `PARK HOURS (${fmtDay(S.viewDate)})`, ...hours.map((h) => `- ${h.park}: ${h.open ? `${h.open} – ${h.close}` : 'not published'}${h.events.length ? ' | ' + h.events.join('; ') : ''}`), '',
     'MUST-DO WAITS (live)', ...must.map((m) => `- ${m.name} (${m.park}): ${m.status === 'OPERATING' ? (m.waitMinutes != null ? m.waitMinutes + ' min' : 'open') : m.status.toLowerCase()}`), '',
     'LOGISTICS ON FILE', ...(Object.keys(logistics).length ? LOGI_FIELDS.filter(([k]) => logistics[k]).map(([k, l]) => `- ${l.split(':')[0].split(' (')[0]}: ${logistics[k].replace(/\n/g, ' / ')}`) : ['- (none entered)']), '',
@@ -895,6 +979,7 @@ function buildDraft(kind) {
     '--- JSON ---',
     JSON.stringify({ source: 'wdw-dashboard', type: kind === 'sync' ? 'sync' : 'question', generatedAt: new Date().toISOString(), addressedTo: bot, topic, question: q || null,
       trip: { start: D.trip.start, end: D.trip.end, adults: D.trip.adults, hotel: 'Westgate Lakes Resort & Spa' }, dayPlan: Object.fromEntries(days.map((d) => [d, planName[plan[d] || ''] || null])),
+      ...(itn ? { itinerary: itn.days.map((d) => ({ date: d.date, title: d.title, items: d.items.map((i) => ({ time: i.time, text: i.text })) })), openItems: itn.gaps.filter((g) => !LS.get(KEY.itinChecks, {})[g.id]).map((g) => g.text) } : {}), ...(itn && withConf ? { confirmations: itn.confirmations.filter((c) => c.value).map((c) => ({ group: c.group, label: c.label, value: c.value })) } : {}),
       parkHours: hours, mustRides: must, logistics, recentAlerts: recent.map((r) => ({ title: r.title, detail: r.detail })) }, null, 2)
   ];
   return { to: S.prefs.email.to, subject, text: lines.join('\n'), msg: '' };
@@ -1164,6 +1249,7 @@ function tickerItems() {
   } else it.push({ c: 'wx', t: W.err ? '🌡️ Weather is unavailable right now' : '🌡️ Loading weather…' });
   W.alerts.forEach((a) => it.push({ c: 'warn', t: `⚠️ NWS alert: ${a}` }));
   LS.get(KEY.news, []).filter((x) => Date.now() - x.t < 3 * 3600e3).slice(0, 12).forEach((n) => it.push({ c: n.kind, t: `${fmtTime(n.t)} ${n.text}`, href: n.href }));
+  const itn = getItin(); if (itn) upcomingItems(itn, 6 * 3600e3).slice(0, 2).forEach(({ i, t }) => it.push({ c: 'alert', t: `⏰ ${i.time} · ${i.text.split(/[.(]/)[0].trim()} (${relTime(t - Date.now())})` }));
   const best = resolvePriority().filter((x) => x.def.type === 'ATTRACTION' && x.ent?.status === 'OPERATING' && x.ent.wait != null).sort((a, b) => a.ent.wait - b.ent.wait)[0];
   if (best) it.push({ c: 'info', t: `⏱️ Shortest must-ride wait: ${best.def.label}, ${best.ent.wait} min` });
   S.deals.items.slice(0, 3).forEach((d) => it.push({ c: 'deal', t: `💸 ${d.title}`, href: d.link }));
@@ -1631,6 +1717,10 @@ document.addEventListener('click', async (ev) => {
   else if (a === 'goto-poi') openMap({ pid: el.dataset.pid });
   else if (a === 'mapcat') { openMap({ cat: el.dataset.v }); if (el.dataset.q) { MAP.q = el.dataset.q; const q1 = $('#mp-q'); if (q1) q1.value = el.dataset.q; updateChips(); updateList(); drawMarkers(); } }
   else if (a === 'tsub') { S.tsub = el.dataset.v; render(); }
+  else if (a === 'itin-import') $('#itin-file')?.click();
+  else if (a === 'itin-clear') { if (confirm('Remove the imported trip sheet from this device? Your park plan choices stay.')) { LS.set(KEY.itin, null); LS.set(KEY.itinChecks, {}); toast('Trip sheet removed'); render(); } }
+  else if (a === 'conf-toggle') { S.showConf = !S.showConf; render(); }
+  else if (a === 'copy') { const ok = await copyText(el.dataset.v); toast(ok ? 'Copied' : 'Copy failed', ok ? el.dataset.v : 'Select and copy it manually'); }
   else if (a === 'gcat') { S.gcat = el.dataset.v; refreshGlobal(); if (!MAP.loaded) loadPois(); }
   else if (a === 'map-close') closeMap();
   else if (a === 'here') hereIAm();
@@ -1657,7 +1747,9 @@ document.addEventListener('click', async (ev) => {
 });
 document.addEventListener('change', async (ev) => {
   const t = ev.target;
-  if (t.id === 'ph-in-cam' || t.id === 'ph-in-lib') { const files = t.files; if (files?.length) { closeModal(); await startEditor(files, t.id === 'ph-in-cam'); } }
+  if (t.id === 'itin-file') { if (t.files?.[0]) importItin(t.files[0]); t.value = ''; }
+  else if (t.dataset.act === 'gapchk') { const c = LS.get(KEY.itinChecks, {}); c[t.dataset.id] = t.checked; LS.set(KEY.itinChecks, c); }
+  else if (t.id === 'ph-in-cam' || t.id === 'ph-in-lib') { const files = t.files; if (files?.length) { closeModal(); await startEditor(files, t.id === 'ph-in-cam'); } }
   else if (t.id === 'mp-park') { MAP.park = t.value; updateList(); drawMarkers(); const a = D.areas.find((x) => x.key === t.value); if (a && MAP.map) MAP.map.setView([a.lat, a.lon], 16); }
   else if (t.dataset.pv && PH.viewId) { const m = await dbDo('meta', 'readonly', (st) => st.get(PH.viewId)); if (m) { m[t.dataset.pv] = t.value.trim ? t.value.trim() : t.value; await dbDo('meta', 'readwrite', (st) => st.put(m)); setMsg('ph-msg', 'Saved.'); } }
 });
@@ -1666,6 +1758,7 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Escape') return;
   if (!$('#modal').classList.contains('hidden')) closeModal(); else if (MAP.open) closeMap();
 });
+document.addEventListener('toggle', (ev) => { const d = ev.target; if (d?.matches?.('details[data-day]')) { if (d.open) S.openDays.add(d.dataset.day); else S.openDays.delete(d.dataset.day); } }, true);
 $('#modal').addEventListener('click', (ev) => { if (ev.target.id === 'modal') closeModal(); });
 
 /* ---------- init ---------- */
